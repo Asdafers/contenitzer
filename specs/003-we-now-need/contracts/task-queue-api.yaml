@@ -1,0 +1,307 @@
+openapi: 3.0.3
+info:
+  title: Contentizer Task Queue API
+  description: Background task management and monitoring
+  version: 1.0.0
+
+paths:
+  /api/tasks:
+    get:
+      summary: List tasks for session
+      description: Get all tasks associated with the current session
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, in_progress, completed, failed, retrying]
+        - name: task_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [trending_analysis, script_generation, media_generation, video_composition, youtube_upload]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListResponse'
+        '400':
+          description: Invalid query parameters
+
+  /api/tasks/{task_id}:
+    get:
+      summary: Get task details
+      description: Retrieve detailed information about a specific task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '404':
+          description: Task not found
+
+    delete:
+      summary: Cancel task
+      description: Cancel a pending or in-progress task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Task cancelled successfully
+        '400':
+          description: Task cannot be cancelled (already completed)
+        '404':
+          description: Task not found
+
+  /api/tasks/{task_id}/retry:
+    post:
+      summary: Retry failed task
+      description: Retry a failed task with same input parameters
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task retry initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '400':
+          description: Task cannot be retried or max retries exceeded
+        '404':
+          description: Task not found
+
+  /api/tasks/submit/{task_type}:
+    post:
+      summary: Submit new task
+      description: Submit a new background task for processing
+      parameters:
+        - name: task_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [trending_analysis, script_generation, media_generation, video_composition, youtube_upload]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitTaskRequest'
+      responses:
+        '201':
+          description: Task submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '400':
+          description: Invalid task parameters
+        '409':
+          description: Duplicate task already in progress
+
+components:
+  schemas:
+    SubmitTaskRequest:
+      type: object
+      required:
+        - session_id
+        - input_data
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Associated user session
+        input_data:
+          type: object
+          description: Task-specific input parameters
+        priority:
+          type: string
+          enum: [low, normal, high]
+          default: normal
+          description: Task processing priority
+      example:
+        session_id: "123e4567-e89b-12d3-a456-426614174000"
+        input_data:
+          input_type: "trending_analysis"
+          categories: ["Entertainment", "Music", "Gaming"]
+        priority: "normal"
+
+    TaskResponse:
+      type: object
+      required:
+        - task_id
+        - session_id
+        - task_type
+        - status
+        - created_at
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        task_type:
+          type: string
+          enum: [trending_analysis, script_generation, media_generation, video_composition, youtube_upload]
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed, retrying]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Completion percentage
+        input_data:
+          type: object
+          description: Task input parameters
+        result_data:
+          type: object
+          description: Task output or error details
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        retry_count:
+          type: integer
+          minimum: 0
+          description: Number of retry attempts
+        estimated_duration:
+          type: string
+          description: Estimated completion time (e.g., "5m 30s")
+        error_message:
+          type: string
+          description: Error description if task failed
+      example:
+        task_id: "456e7890-e89b-12d3-a456-426614174001"
+        session_id: "123e4567-e89b-12d3-a456-426614174000"
+        task_type: "script_generation"
+        status: "in_progress"
+        progress: 65
+        input_data:
+          input_type: "generated_theme"
+          theme_id: "789e0123-e89b-12d3-a456-426614174002"
+        created_at: "2025-09-23T10:15:00Z"
+        started_at: "2025-09-23T10:16:00Z"
+        retry_count: 0
+        estimated_duration: "2m 15s"
+
+    TaskListResponse:
+      type: object
+      required:
+        - tasks
+        - total
+        - limit
+        - offset
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskResponse'
+        total:
+          type: integer
+          description: Total number of tasks matching criteria
+        limit:
+          type: integer
+          description: Number of tasks returned
+        offset:
+          type: integer
+          description: Offset for pagination
+        has_more:
+          type: boolean
+          description: Whether more tasks are available
+      example:
+        tasks:
+          - task_id: "456e7890-e89b-12d3-a456-426614174001"
+            session_id: "123e4567-e89b-12d3-a456-426614174000"
+            task_type: "script_generation"
+            status: "completed"
+            progress: 100
+            created_at: "2025-09-23T10:15:00Z"
+            completed_at: "2025-09-23T10:18:30Z"
+            retry_count: 0
+        total: 5
+        limit: 20
+        offset: 0
+        has_more: false
+
+    TaskError:
+      type: object
+      required:
+        - error_code
+        - message
+        - timestamp
+      properties:
+        error_code:
+          type: string
+          description: Machine-readable error identifier
+        message:
+          type: string
+          description: Human-readable error description
+        details:
+          type: object
+          description: Additional error context
+        timestamp:
+          type: string
+          format: date-time
+        retryable:
+          type: boolean
+          description: Whether this error can be resolved by retrying
+      example:
+        error_code: "API_RATE_LIMIT"
+        message: "OpenAI API rate limit exceeded"
+        details:
+          retry_after: 60
+          rate_limit_type: "requests_per_minute"
+        timestamp: "2025-09-23T10:20:00Z"
+        retryable: true

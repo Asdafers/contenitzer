@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Text, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Integer, Text, DateTime, Enum, ForeignKey, Boolean, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -28,6 +28,13 @@ class VideoProject(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     completion_percentage = Column(Integer, nullable=False, default=0)
     error_message = Column(Text, nullable=True)
+
+    # UI fields for frontend interaction
+    ui_settings = Column(JSON, default=dict, nullable=False)  # UI preferences and settings
+    is_pinned = Column(Boolean, default=False, nullable=False)  # Pin to top of project list
+    is_archived = Column(Boolean, default=False, nullable=False)  # Archive old projects
+    ui_last_viewed = Column(DateTime(timezone=True), nullable=True)  # Track when last opened
+    ui_metadata = Column(JSON, default=dict, nullable=False)  # Additional UI metadata
 
     # Relationships
     script = relationship("VideoScript", back_populates="project")

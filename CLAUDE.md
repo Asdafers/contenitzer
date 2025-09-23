@@ -4,6 +4,8 @@ Auto-generated from all feature plans. Last updated: 2025-09-22
 
 ## Active Technologies
 - (002-youtube-api-i)
+- Python 3.11+ (backend), TypeScript 5+ (frontend) + FastAPI, React 18+, Redis, SQLAlchemy, Vite (003-we-now-need)
+- SQLite/PostgreSQL (existing), Redis (sessions/tasks) (003-we-now-need)
 
 ## Project Structure
 ```
@@ -21,6 +23,7 @@ tests/
 : Follow standard conventions
 
 ## Recent Changes
+- 003-we-now-need: Added Python 3.11+ (backend), TypeScript 5+ (frontend) + FastAPI, React 18+, Redis, SQLAlchemy, Vite
 - 002-youtube-api-i: Added
 
 <!-- MANUAL ADDITIONS START -->

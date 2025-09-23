@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, BigInteger, Integer, DateTime, JSON, Enum, ForeignKey
+from sqlalchemy import Column, String, Text, BigInteger, Integer, DateTime, JSON, Enum, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -35,6 +35,13 @@ class MediaAsset(Base):
     generation_status = Column(Enum(GenerationStatusEnum), nullable=False, default=GenerationStatusEnum.pending)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     asset_metadata = Column(JSON, default=dict)
+
+    # Progress tracking fields
+    generation_progress = Column(Integer, default=0, nullable=False)  # 0-100 progress percentage
+    generation_started_at = Column(DateTime(timezone=True), nullable=True)  # When generation started
+    generation_completed_at = Column(DateTime(timezone=True), nullable=True)  # When generation completed
+    estimated_duration = Column(Float, nullable=True)  # Estimated generation time in seconds
+    task_id = Column(String(100), nullable=True)  # Associated Celery task ID
 
     # Relationships
     project = relationship("VideoProject", back_populates="media_assets")

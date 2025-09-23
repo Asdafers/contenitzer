@@ -1,0 +1,158 @@
+openapi: 3.0.3
+info:
+  title: Contentizer WebSocket API
+  description: Real-time progress updates and session management
+  version: 1.0.0
+
+paths:
+  /ws/progress/{session_id}:
+    get:
+      summary: WebSocket connection for real-time progress updates
+      description: |
+        Establishes WebSocket connection for receiving real-time progress updates
+        for video processing tasks associated with the user's session.
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User session UUID
+      responses:
+        '101':
+          description: WebSocket connection established
+        '400':
+          description: Invalid session ID format
+        '404':
+          description: Session not found
+
+components:
+  schemas:
+    ProgressMessage:
+      type: object
+      required:
+        - event_type
+        - task_id
+        - timestamp
+      properties:
+        event_type:
+          type: string
+          enum: [progress_update, status_change, error, completion]
+          description: Type of progress event
+        task_id:
+          type: string
+          format: uuid
+          description: Associated task identifier
+        message:
+          type: string
+          description: Human-readable progress message
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Completion percentage (for progress_update events)
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed, retrying]
+          description: Current task status (for status_change events)
+        data:
+          type: object
+          description: Event-specific additional data
+        timestamp:
+          type: string
+          format: date-time
+          description: Event timestamp in ISO 8601 format
+      example:
+        event_type: "progress_update"
+        task_id: "123e4567-e89b-12d3-a456-426614174000"
+        message: "Generating audio from script..."
+        progress: 45
+        data:
+          step: "audio_generation"
+          estimated_remaining: "2m 30s"
+        timestamp: "2025-09-23T10:30:00Z"
+
+    ErrorMessage:
+      type: object
+      required:
+        - event_type
+        - task_id
+        - message
+        - timestamp
+      properties:
+        event_type:
+          type: string
+          enum: [error]
+        task_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+          description: Error description
+        data:
+          type: object
+          properties:
+            error_code:
+              type: string
+              description: Machine-readable error code
+            retry_count:
+              type: integer
+              description: Current retry attempt
+            max_retries:
+              type: integer
+              description: Maximum retry attempts allowed
+        timestamp:
+          type: string
+          format: date-time
+      example:
+        event_type: "error"
+        task_id: "123e4567-e89b-12d3-a456-426614174000"
+        message: "Video composition failed: insufficient disk space"
+        data:
+          error_code: "DISK_SPACE_ERROR"
+          retry_count: 1
+          max_retries: 3
+        timestamp: "2025-09-23T10:35:00Z"
+
+    CompletionMessage:
+      type: object
+      required:
+        - event_type
+        - task_id
+        - timestamp
+      properties:
+        event_type:
+          type: string
+          enum: [completion]
+        task_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+          description: Completion message
+        data:
+          type: object
+          properties:
+            result_url:
+              type: string
+              format: uri
+              description: URL to download completed asset
+            file_size:
+              type: integer
+              description: File size in bytes
+            duration:
+              type: string
+              description: Processing duration
+        timestamp:
+          type: string
+          format: date-time
+      example:
+        event_type: "completion"
+        task_id: "123e4567-e89b-12d3-a456-426614174000"
+        message: "Video composition completed successfully"
+        data:
+          result_url: "/api/videos/download/abc123"
+          file_size: 52428800
+          duration: "3m 45s"
+        timestamp: "2025-09-23T10:40:00Z"

@@ -1,0 +1,364 @@
+openapi: 3.0.3
+info:
+  title: Contentizer Session Management API
+  description: Session creation, management, and state persistence
+  version: 1.0.0
+
+paths:
+  /api/sessions:
+    post:
+      summary: Create new user session
+      description: Create a new session for managing user state and preferences
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '400':
+          description: Invalid request data
+
+  /api/sessions/{session_id}:
+    get:
+      summary: Get session details
+      description: Retrieve current session state and preferences
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '404':
+          description: Session not found
+
+    put:
+      summary: Update session preferences
+      description: Update user preferences and API keys
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSessionRequest'
+      responses:
+        '200':
+          description: Session updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '400':
+          description: Invalid request data
+        '404':
+          description: Session not found
+
+    delete:
+      summary: Delete session
+      description: Immediately expire and clean up session data
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Session deleted successfully
+        '404':
+          description: Session not found
+
+  /api/sessions/{session_id}/workflow-state:
+    get:
+      summary: Get workflow state
+      description: Retrieve current workflow progress and form data
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Workflow state retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowStateResponse'
+        '404':
+          description: Session not found
+
+    put:
+      summary: Update workflow state
+      description: Persist current workflow step and form data
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkflowStateRequest'
+      responses:
+        '200':
+          description: Workflow state updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowStateResponse'
+        '400':
+          description: Invalid workflow data
+        '404':
+          description: Session not found
+
+  /api/sessions/{session_id}/ui-state/{component_name}:
+    get:
+      summary: Get component UI state
+      description: Retrieve saved form data for specific component
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: component_name
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [trending_analysis, script_generator, media_generator, video_composer, youtube_uploader]
+      responses:
+        '200':
+          description: UI state retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UIStateResponse'
+        '404':
+          description: Session or component state not found
+
+    put:
+      summary: Update component UI state
+      description: Auto-save form data and component state
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: component_name
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [trending_analysis, script_generator, media_generator, video_composer, youtube_uploader]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUIStateRequest'
+      responses:
+        '200':
+          description: UI state updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UIStateResponse'
+        '400':
+          description: Invalid UI state data
+        '404':
+          description: Session not found
+
+components:
+  schemas:
+    CreateSessionRequest:
+      type: object
+      properties:
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+      example:
+        preferences:
+          theme: "dark"
+          auto_save: true
+
+    UpdateSessionRequest:
+      type: object
+      properties:
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+      required:
+        - preferences
+      example:
+        preferences:
+          openai_api_key: "sk-..."
+          youtube_api_key: "AIza..."
+          theme: "light"
+          auto_save: true
+
+    SessionResponse:
+      type: object
+      required:
+        - session_id
+        - created_at
+        - expires_at
+        - last_activity
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+        workflow_state:
+          $ref: '#/components/schemas/WorkflowState'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+      example:
+        session_id: "123e4567-e89b-12d3-a456-426614174000"
+        preferences:
+          theme: "dark"
+          auto_save: true
+        workflow_state:
+          current_step: "script_generation"
+          completed_steps: ["trending_analysis"]
+        created_at: "2025-09-23T09:00:00Z"
+        expires_at: "2025-09-24T09:00:00Z"
+        last_activity: "2025-09-23T10:30:00Z"
+
+    UserPreferences:
+      type: object
+      properties:
+        openai_api_key:
+          type: string
+          description: Encrypted API key for OpenAI services
+        youtube_api_key:
+          type: string
+          description: Encrypted API key for YouTube services
+        gemini_api_key:
+          type: string
+          description: Encrypted API key for Gemini services
+        theme:
+          type: string
+          enum: [light, dark]
+          default: light
+        auto_save:
+          type: boolean
+          default: true
+        notifications:
+          type: boolean
+          default: true
+
+    WorkflowState:
+      type: object
+      properties:
+        current_step:
+          type: string
+          enum: [trending_analysis, script_generation, media_generation, video_composition, youtube_upload]
+        completed_steps:
+          type: array
+          items:
+            type: string
+            enum: [trending_analysis, script_generation, media_generation, video_composition, youtube_upload]
+        active_project_id:
+          type: string
+          format: uuid
+          description: Currently active video project
+        form_data:
+          type: object
+          description: Current step form data
+
+    WorkflowStateResponse:
+      type: object
+      required:
+        - session_id
+        - workflow_state
+        - last_updated
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        workflow_state:
+          $ref: '#/components/schemas/WorkflowState'
+        last_updated:
+          type: string
+          format: date-time
+
+    UpdateWorkflowStateRequest:
+      type: object
+      required:
+        - workflow_state
+      properties:
+        workflow_state:
+          $ref: '#/components/schemas/WorkflowState'
+
+    UIStateResponse:
+      type: object
+      required:
+        - session_id
+        - component_name
+        - last_updated
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        component_name:
+          type: string
+        form_data:
+          type: object
+          description: Component form field values
+        ui_state:
+          type: object
+          description: Component-specific state data
+        last_updated:
+          type: string
+          format: date-time
+
+    UpdateUIStateRequest:
+      type: object
+      properties:
+        form_data:
+          type: object
+          description: Form field values to persist
+        ui_state:
+          type: object
+          description: Component state to persist
+        auto_save:
+          type: boolean
+          default: true
