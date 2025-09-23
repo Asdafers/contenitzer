@@ -1,0 +1,124 @@
+openapi: 3.0.0
+info:
+  title: Content Creator Workbench API
+  version: 1.0.0
+paths:
+  /api/trending/analyze:
+    post:
+      summary: Analyze YouTube trending content by categories
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timeframe:
+                  type: string
+                  enum: [weekly, monthly]
+                api_key:
+                  type: string
+              required: [timeframe, api_key]
+      responses:
+        '200':
+          description: Top 3 themes across top 5 categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+                        themes:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: {type: string}
+                              name: {type: string}
+                              relevance_score: {type: number}
+  /api/scripts/generate:
+    post:
+      summary: Generate script from theme or manual input
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input_type:
+                  type: string
+                  enum: [theme, manual_subject, manual_script]
+                theme_id: {type: string}
+                manual_input: {type: string}
+              required: [input_type]
+      responses:
+        '200':
+          description: Generated or processed script
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  script_id: {type: string}
+                  content: {type: string}
+                  estimated_duration: {type: integer}
+  /api/media/generate:
+    post:
+      summary: Generate audio and visual assets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                script_id: {type: string}
+              required: [script_id]
+      responses:
+        '202':
+          description: Generation started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: {type: string}
+                  status: {type: string}
+  /api/videos/compose:
+    post:
+      summary: Compose final video from assets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id: {type: string}
+              required: [project_id]
+      responses:
+        '202':
+          description: Composition started
+  /api/videos/upload:
+    post:
+      summary: Upload video to YouTube
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id: {type: string}
+                youtube_api_key: {type: string}
+              required: [project_id, youtube_api_key]
+      responses:
+        '202':
+          description: Upload started
