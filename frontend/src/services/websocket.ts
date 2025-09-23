@@ -1,5 +1,6 @@
 // WebSocket service for real-time progress tracking
 import { EventEmitter } from 'events';
+import React from 'react';
 
 export interface TaskProgress {
   task_id: string;
