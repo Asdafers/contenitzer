@@ -1,6 +1,35 @@
 // WebSocket service for real-time progress tracking
-import { EventEmitter } from 'events';
-import React from 'react';
+import { useState, useEffect } from 'react';
+
+// Browser-compatible EventEmitter implementation
+class EventEmitter {
+  private events: { [key: string]: Function[] } = {};
+
+  on(event: string, listener: Function) {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+    this.events[event].push(listener);
+  }
+
+  off(event: string, listener: Function) {
+    if (!this.events[event]) return;
+    this.events[event] = this.events[event].filter(l => l !== listener);
+  }
+
+  once(event: string, listener: Function) {
+    const onceWrapper = (...args: any[]) => {
+      listener(...args);
+      this.off(event, onceWrapper);
+    };
+    this.on(event, onceWrapper);
+  }
+
+  emit(event: string, ...args: any[]) {
+    if (!this.events[event]) return;
+    this.events[event].forEach(listener => listener(...args));
+  }
+}
 
 export interface TaskProgress {
   task_id: string;
@@ -28,7 +57,7 @@ class WebSocketManager extends EventEmitter {
   private reconnectAttempts: number = 0;
   private isConnecting: boolean = false;
   private subscriptions: Set<string> = new Set();
-  private pingInterval: NodeJS.Timeout | null = null;
+  private pingInterval: number | null = null;
 
   constructor(url?: string) {
     super();
@@ -247,10 +276,10 @@ export const useWebSocket = () => {
 
 // Hook specifically for tracking task progress
 export const useTaskProgress = (taskId: string) => {
-  const [progress, setProgress] = React.useState<TaskProgress | null>(null);
-  const [isSubscribed, setIsSubscribed] = React.useState(false);
+  const [progress, setProgress] = useState<TaskProgress | null>(null);
+  const [isSubscribed, setIsSubscribed] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!taskId) return;
 
     const handleTaskUpdate = (taskProgress: TaskProgress) => {

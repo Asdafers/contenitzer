@@ -1,17 +1,17 @@
 from typing import Dict, Any, List, Optional
-import openai
-from openai import OpenAI
 import logging
 import asyncio
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
 
 class GeminiService:
-    """Service for interacting with Gemini/OpenAI APIs for content generation"""
+    """Service for interacting with Google Gemini APIs for content generation"""
 
     def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('gemini-pro')
 
     async def generate_script_from_theme(
         self,
@@ -52,18 +52,15 @@ Speaker 2: [dialogue]
 """
 
         try:
+            system_prompt = "You are an expert content creator who writes engaging conversational scripts for video content."
+            full_prompt = f"{system_prompt}\n\n{prompt}"
+
             response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert content creator who writes engaging conversational scripts for video content."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=2000,
-                temperature=0.7
+                self.model.generate_content,
+                full_prompt
             )
 
-            script_content = response.choices[0].message.content
+            script_content = response.text
             word_count = len(script_content.split())
             estimated_duration = (word_count / 150) * 60  # seconds
 
@@ -71,7 +68,7 @@ Speaker 2: [dialogue]
                 "content": script_content,
                 "word_count": word_count,
                 "estimated_duration": int(estimated_duration),
-                "model_used": "gpt-3.5-turbo"
+                "model_used": "gemini-pro"
             }
 
         except Exception as e:

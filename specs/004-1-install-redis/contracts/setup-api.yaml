@@ -1,0 +1,277 @@
+openapi: 3.0.3
+info:
+  title: Development Environment Setup API
+  version: 1.0.0
+  description: API contracts for validating development environment setup and health
+
+paths:
+  /setup/health:
+    get:
+      summary: Get comprehensive system health status
+      description: Returns health status of all services and dependencies
+      responses:
+        '200':
+          description: System health information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  overall_status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  services:
+                    type: object
+                    properties:
+                      redis:
+                        $ref: '#/components/schemas/ServiceHealth'
+                      backend:
+                        $ref: '#/components/schemas/ServiceHealth'
+                      frontend:
+                        $ref: '#/components/schemas/ServiceHealth'
+                      websocket:
+                        $ref: '#/components/schemas/ServiceHealth'
+                  timestamp:
+                    type: string
+                    format: date-time
+                required: [overall_status, services, timestamp]
+        '503':
+          description: System unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /setup/validate-config:
+    post:
+      summary: Validate environment configuration
+      description: Checks if provided configuration is valid and complete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigurationProfile'
+      responses:
+        '200':
+          description: Configuration validation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+                        severity:
+                          type: string
+                          enum: [error, warning]
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                required: [valid, errors]
+        '400':
+          description: Invalid configuration format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /setup/test-connectivity:
+    post:
+      summary: Test connectivity to external services
+      description: Validates connections to Redis, YouTube API, OpenAI API
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                services:
+                  type: array
+                  items:
+                    type: string
+                    enum: [redis, youtube_api, openai_api, all]
+                timeout_seconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 60
+                  default: 10
+              required: [services]
+      responses:
+        '200':
+          description: Connectivity test results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        connected:
+                          type: boolean
+                        response_time_ms:
+                          type: number
+                        error:
+                          type: string
+                        details:
+                          type: object
+                  overall_success:
+                    type: boolean
+                required: [results, overall_success]
+
+  /setup/run-tests:
+    post:
+      summary: Execute validation tests
+      description: Runs contract, integration, or end-to-end tests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                test_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [contract, integration, e2e, smoke, all]
+                parallel:
+                  type: boolean
+                  default: false
+                timeout_seconds:
+                  type: integer
+                  minimum: 10
+                  maximum: 300
+                  default: 120
+              required: [test_types]
+      responses:
+        '200':
+          description: Test execution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  execution_id:
+                    type: string
+                  test_results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestResult'
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      passed:
+                        type: integer
+                      failed:
+                        type: integer
+                      skipped:
+                        type: integer
+                      duration_ms:
+                        type: number
+                required: [execution_id, test_results, summary]
+
+components:
+  schemas:
+    ServiceHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, starting, stopped]
+        response_time_ms:
+          type: number
+        last_check:
+          type: string
+          format: date-time
+        error_message:
+          type: string
+        connection_details:
+          type: object
+      required: [status, last_check]
+
+    ConfigurationProfile:
+      type: object
+      properties:
+        redis_url:
+          type: string
+          format: uri
+          example: "redis://localhost:6379/0"
+        redis_session_db:
+          type: integer
+          minimum: 0
+          maximum: 15
+          default: 1
+        redis_task_db:
+          type: integer
+          minimum: 0
+          maximum: 15
+          default: 2
+        youtube_api_key:
+          type: string
+          minLength: 1
+        openai_api_key:
+          type: string
+          minLength: 1
+        backend_url:
+          type: string
+          format: uri
+          default: "http://localhost:8000"
+        frontend_url:
+          type: string
+          format: uri
+          default: "http://localhost:3000"
+        websocket_url:
+          type: string
+          format: uri
+        environment:
+          type: string
+          enum: [local, docker, cloud]
+          default: local
+      required: [redis_url, youtube_api_key, openai_api_key]
+
+    TestResult:
+      type: object
+      properties:
+        test_name:
+          type: string
+        test_type:
+          type: string
+          enum: [contract, integration, e2e, smoke]
+        status:
+          type: string
+          enum: [passed, failed, skipped, error]
+        duration_ms:
+          type: number
+        error_details:
+          type: string
+        test_data:
+          type: object
+      required: [test_name, test_type, status, duration_ms]
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+      required: [error, message]

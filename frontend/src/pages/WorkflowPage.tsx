@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocket } from '../services/websocket';
 
 interface WorkflowStep {
   id: string;
@@ -19,12 +19,22 @@ export default function WorkflowPage() {
     { id: 'upload', name: 'YouTube Upload', completed: false, inProgress: false },
   ]);
 
-  const { messages, sendMessage, connectionStatus } = useWebSocket(sessionId);
+  const { connect, disconnect, getConnectionState } = useWebSocket();
+  const [messages, setMessages] = useState<any[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
   useEffect(() => {
     // Create session on component mount
     createSession();
-  }, []);
+
+    // Update connection status
+    const updateStatus = () => setConnectionStatus(getConnectionState());
+    updateStatus();
+
+    // Update status every 2 seconds
+    const interval = setInterval(updateStatus, 2000);
+    return () => clearInterval(interval);
+  }, [getConnectionState]);
 
   const createSession = async () => {
     try {

@@ -6,6 +6,8 @@ Auto-generated from all feature plans. Last updated: 2025-09-22
 - (002-youtube-api-i)
 - Python 3.11+ (backend), TypeScript 5+ (frontend) + FastAPI, React 18+, Redis, SQLAlchemy, Vite (003-we-now-need)
 - SQLite/PostgreSQL (existing), Redis (sessions/tasks) (003-we-now-need)
+- Python 3.11+ (backend), TypeScript 5+ (frontend) + FastAPI, Redis, Celery, React 18+, Vite, SQLAlchemy, WebSockets (004-1-install-redis)
+- Redis (sessions/tasks), SQLite/PostgreSQL (persistent data) (004-1-install-redis)
 
 ## Project Structure
 ```
@@ -23,6 +25,7 @@ tests/
 : Follow standard conventions
 
 ## Recent Changes
+- 004-1-install-redis: Added Python 3.11+ (backend), TypeScript 5+ (frontend) + FastAPI, Redis, Celery, React 18+, Vite, SQLAlchemy, WebSockets
 - 003-we-now-need: Added Python 3.11+ (backend), TypeScript 5+ (frontend) + FastAPI, React 18+, Redis, SQLAlchemy, Vite
 - 002-youtube-api-i: Added
 
