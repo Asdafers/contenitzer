@@ -8,6 +8,8 @@ from .video_script import VideoScript
 from .video_project import VideoProject
 from .media_asset import MediaAsset
 from .composed_video import ComposedVideo
+from .uploaded_script import UploadedScript
+from .workflow import Workflow
 
 # Export all models
 __all__ = [
@@ -19,5 +21,7 @@ __all__ = [
     "VideoScript",
     "VideoProject",
     "MediaAsset",
-    "ComposedVideo"
+    "ComposedVideo",
+    "UploadedScript",
+    "Workflow"
 ]

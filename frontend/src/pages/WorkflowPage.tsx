@@ -1,5 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../services/websocket';
+import { WorkflowModeSelector } from '../components/Workflow/WorkflowModeSelector';
+import { ScriptUploadComponent } from '../components/ScriptUpload/ScriptUploadComponent';
+import { ScriptValidationStatus } from '../components/ScriptUpload/ScriptValidationStatus';
+import { scriptUploadService } from '../services/scriptUploadService';
+import { useScriptUpload, useWorkflow } from '../hooks/useScriptUpload';
 
 interface WorkflowStep {
   id: string;
@@ -10,7 +15,13 @@ interface WorkflowStep {
 }
 
 export default function WorkflowPage() {
+  console.log('=== WORKFLOW PAGE RENDERED ===');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [workflowMode, setWorkflowMode] = useState<'GENERATE' | 'UPLOAD' | null>(null);
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [uploadedScriptId, setUploadedScriptId] = useState<string | null>(null);
+  const [validationStatus, setValidationStatus] = useState<'PENDING' | 'VALID' | 'INVALID'>('PENDING');
+
   const [steps, setSteps] = useState<WorkflowStep[]>([
     { id: 'trending', name: 'Trending Analysis', completed: false, inProgress: false },
     { id: 'script', name: 'Script Generation', completed: false, inProgress: false },
@@ -19,14 +30,28 @@ export default function WorkflowPage() {
     { id: 'upload', name: 'YouTube Upload', completed: false, inProgress: false },
   ]);
 
-  const { connect, disconnect, getConnectionState } = useWebSocket();
+  const { connect, disconnect, getConnectionState, on } = useWebSocket(sessionId || undefined);
   const [messages, setMessages] = useState<any[]>([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
-  useEffect(() => {
-    // Create session on component mount
-    createSession();
+  // Hooks for workflow and script upload
+  const { workflowState, createWorkflow, setWorkflowMode: setMode } = useWorkflow();
+  const { uploadState, uploadScript } = useScriptUpload({
+    onSuccess: (scriptId) => {
+      setUploadedScriptId(scriptId);
+      // Skip script generation step when upload succeeds
+      setSteps(prev => prev.map(step =>
+        step.id === 'script' ? { ...step, completed: true } : step
+      ));
+    }
+  });
 
+  useEffect(() => {
+    // Create session only once on component mount
+    createSession();
+  }, []); // Empty dependency array to run only once
+
+  useEffect(() => {
     // Update connection status
     const updateStatus = () => setConnectionStatus(getConnectionState());
     updateStatus();
@@ -34,7 +59,63 @@ export default function WorkflowPage() {
     // Update status every 2 seconds
     const interval = setInterval(updateStatus, 2000);
     return () => clearInterval(interval);
-  }, [getConnectionState]);
+  }, []); // Empty dependency array to prevent infinite loop
+
+  useEffect(() => {
+    // Connect to WebSocket when session is available (with delay to prevent UI blocking)
+    if (sessionId) {
+      console.log('Connecting to WebSocket for session:', sessionId);
+
+      // Use setTimeout to make connection non-blocking
+      const connectTimer = setTimeout(() => {
+        connect().catch(error => {
+          console.error('Failed to connect to WebSocket:', error);
+        });
+      }, 100); // Small delay to prevent UI blocking
+
+      // Listen for progress updates
+      const unsubscribeProgress = on('progressUpdate', (data: any) => {
+        console.log('Progress update received:', data);
+        setMessages(prev => [...prev, data]);
+
+        // Update step progress based on event type
+        if (data.event_type === 'task_started') {
+          setSteps(prev => prev.map(step =>
+            step.id === 'trending'
+              ? { ...step, name: 'Trending Analysis', inProgress: true, completed: false, progress: 0 }
+              : step
+          ));
+        } else if (data.event_type === 'task_progress') {
+          setSteps(prev => prev.map(step =>
+            step.id === 'trending'
+              ? { ...step, name: 'Trending Analysis', inProgress: true, completed: false, progress: data.progress || 0 }
+              : step
+          ));
+        } else if (data.event_type === 'task_completed') {
+          setSteps(prev => prev.map(step =>
+            step.id === 'trending'
+              ? { ...step, name: 'Trending Analysis', inProgress: false, completed: true, progress: 100 }
+              : step
+          ));
+          // Reset workflow running state after task completes
+          setIsWorkflowRunning(false);
+        } else if (data.event_type === 'task_failed') {
+          setSteps(prev => prev.map(step =>
+            step.id === 'trending'
+              ? { ...step, name: 'Trending Analysis (Failed)', inProgress: false, completed: false, progress: 0 }
+              : step
+          ));
+          setIsWorkflowRunning(false);
+        }
+      });
+
+      return () => {
+        clearTimeout(connectTimer);
+        unsubscribeProgress();
+        disconnect();
+      };
+    }
+  }, [sessionId]); // Only depend on sessionId, not the functions
 
   const createSession = async () => {
     try {
@@ -50,32 +131,111 @@ export default function WorkflowPage() {
     }
   };
 
-  const startWorkflow = async () => {
-    if (!sessionId) return;
+  const handleModeSelect = async (mode: 'GENERATE' | 'UPLOAD') => {
+    try {
+      // Create workflow if it doesn't exist
+      let currentWorkflowId = workflowId;
+      if (!currentWorkflowId) {
+        currentWorkflowId = await createWorkflow('Content Creation Workflow');
+        setWorkflowId(currentWorkflowId);
+      }
+
+      // Set workflow mode
+      await setMode(currentWorkflowId, mode);
+      setWorkflowMode(mode);
+
+      // Update steps based on mode
+      if (mode === 'UPLOAD') {
+        setSteps(prev => prev.map(step => {
+          if (step.id === 'trending') {
+            // Skip trending analysis when uploading script
+            return { ...step, name: 'Trending Analysis (Skipped)', completed: true, inProgress: false };
+          } else if (step.id === 'script') {
+            // Replace script generation with script upload
+            return { ...step, name: 'Script Upload', completed: false, inProgress: false };
+          }
+          return step;
+        }));
+      } else {
+        setSteps(prev => prev.map(step => {
+          if (step.id === 'trending') {
+            return { ...step, name: 'Trending Analysis', completed: false, inProgress: false };
+          } else if (step.id === 'script') {
+            return { ...step, name: 'Script Generation', completed: false, inProgress: false };
+          }
+          return step;
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to set workflow mode:', error);
+    }
+  };
+
+  const handleScriptUpload = async (content?: string, file?: File) => {
+    if (!workflowId) return;
 
     try {
-      // Start trending analysis
-      const response = await fetch('/api/tasks/submit/trending_analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: sessionId,
-          input_data: { categories: ['Entertainment', 'Music', 'Gaming'] },
-          priority: 'normal'
-        })
-      });
+      await uploadScript(workflowId, content, file);
+    } catch (error) {
+      console.error('Failed to upload script:', error);
+    }
+  };
 
-      if (response.ok) {
+  const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+
+  const startWorkflow = useCallback(async () => {
+    if (!sessionId || !workflowMode || isWorkflowRunning) return;
+
+    try {
+      setIsWorkflowRunning(true);
+
+      // Clear previous messages
+      setMessages([]);
+
+      if (workflowMode === 'GENERATE') {
+        // Start trending analysis (first step for generation workflow)
+        const response = await fetch('/api/tasks/submit/trending_analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            input_data: { categories: ['Entertainment', 'Music', 'Gaming'] },
+            priority: 'normal'
+          })
+        });
+
+        if (response.ok) {
+          setSteps(prev => prev.map(step =>
+            step.id === 'trending'
+              ? { ...step, inProgress: true, progress: 0 }
+              : step
+          ));
+        }
+      } else if (workflowMode === 'UPLOAD') {
+        // Skip trending analysis, go directly to next step (media generation)
+        console.log('Skipping trending analysis - script already uploaded');
         setSteps(prev => prev.map(step =>
-          step.id === 'trending'
-            ? { ...step, inProgress: true }
+          step.id === 'media'
+            ? { ...step, inProgress: true, progress: 0 }
             : step
         ));
+
+        // TODO: Start media generation task
+        // For now, just complete immediately
+        setTimeout(() => {
+          setSteps(prev => prev.map(step =>
+            step.id === 'media'
+              ? { ...step, inProgress: false, completed: true, progress: 100 }
+              : step
+          ));
+          setIsWorkflowRunning(false);
+        }, 2000);
       }
     } catch (error) {
       console.error('Failed to start workflow:', error);
+      setIsWorkflowRunning(false);
     }
-  };
+  }, [sessionId, workflowMode, isWorkflowRunning]);
 
   return (
     <div className="min-h-screen bg-secondary-50 py-8">
@@ -89,73 +249,143 @@ export default function WorkflowPage() {
           </p>
         </div>
 
-        <div className="card mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-semibold text-secondary-900">
-              Video Creation Workflow
+        {/* Mode Selection */}
+        {!workflowMode && (
+          <div className="card mb-8">
+            <h2 className="text-2xl font-semibold text-secondary-900 mb-6">
+              Choose Your Workflow
             </h2>
-            <div className="flex items-center space-x-4">
-              <div className={`px-3 py-1 rounded-full text-sm ${
-                connectionStatus === 'connected'
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                WebSocket: {connectionStatus}
+            <WorkflowModeSelector
+              onModeSelect={handleModeSelect}
+              disabled={workflowState.isLoading}
+            />
+            {workflowState.error && (
+              <div className="alert alert-error mt-4">
+                {workflowState.error}
               </div>
-              <button
-                onClick={startWorkflow}
-                disabled={!sessionId}
-                className="btn btn-primary"
-              >
-                Start Workflow
-              </button>
-            </div>
+            )}
           </div>
+        )}
 
-          <div className="space-y-4">
-            {steps.map((step, index) => (
-              <div
-                key={step.id}
-                className={`flex items-center p-4 rounded-lg border-2 ${
-                  step.completed
-                    ? 'border-green-200 bg-green-50'
-                    : step.inProgress
-                    ? 'border-primary-200 bg-primary-50'
-                    : 'border-secondary-200 bg-white'
-                }`}
-              >
-                <div className="flex-shrink-0 mr-4">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+        {/* Script Upload (only shown in UPLOAD mode) */}
+        {workflowMode === 'UPLOAD' && !uploadedScriptId && (
+          <div className="card mb-8">
+            <h2 className="text-2xl font-semibold text-secondary-900 mb-6">
+              Upload Your Script
+            </h2>
+            <ScriptUploadComponent
+              onUploadSuccess={(scriptId, validationStatus) => {
+                console.log('Upload success callback:', { scriptId, validationStatus });
+                setUploadedScriptId(scriptId);
+                setValidationStatus(validationStatus);
+                // Skip script generation step when upload succeeds
+                setSteps(prev => prev.map(step =>
+                  step.id === 'script' ? { ...step, completed: true } : step
+                ));
+              }}
+              onUploadError={(error) => {
+                console.error('Script upload error:', error);
+              }}
+              workflowId={workflowId || ''}
+            />
+            {uploadState.error && (
+              <div className="alert alert-error mt-4">
+                {uploadState.error}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Script Validation Status */}
+        {workflowMode === 'UPLOAD' && uploadedScriptId && (
+          <div className="card mb-8">
+            <ScriptValidationStatus
+              scriptId={uploadedScriptId}
+              status={validationStatus}
+            />
+          </div>
+        )}
+
+        {/* Workflow Steps */}
+        {workflowMode && (
+          <div className="card mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold text-secondary-900">
+                {workflowMode === 'UPLOAD' ? 'Script Upload' : 'Video Generation'} Workflow
+              </h2>
+              <div className="flex items-center space-x-4">
+                <div className={`px-3 py-1 rounded-full text-sm ${
+                  connectionStatus === 'connected'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  WebSocket: {connectionStatus}
+                </div>
+                <button
+                  onClick={() => {
+                    setWorkflowMode(null);
+                    setWorkflowId(null);
+                    setUploadedScriptId(null);
+                  }}
+                  className="btn btn-secondary"
+                >
+                  Change Mode
+                </button>
+                <button
+                  onClick={startWorkflow}
+                  disabled={!sessionId || (workflowMode === 'UPLOAD' && !uploadedScriptId) || isWorkflowRunning}
+                  className="btn btn-primary"
+                >
+                  {isWorkflowRunning ? 'Running...' : 'Start Workflow'}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {steps.map((step, index) => (
+                <div
+                  key={step.id}
+                  className={`flex items-center p-4 rounded-lg border-2 ${
                     step.completed
-                      ? 'bg-green-500 text-white'
+                      ? 'border-green-200 bg-green-50'
                       : step.inProgress
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-secondary-300 text-secondary-600'
-                  }`}>
-                    {step.completed ? '✓' : index + 1}
+                      ? 'border-primary-200 bg-primary-50'
+                      : 'border-secondary-200 bg-white'
+                  }`}
+                >
+                  <div className="flex-shrink-0 mr-4">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      step.completed
+                        ? 'bg-green-500 text-white'
+                        : step.inProgress
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-secondary-300 text-secondary-600'
+                    }`}>
+                      {step.completed ? '✓' : index + 1}
+                    </div>
+                  </div>
+
+                  <div className="flex-grow">
+                    <h3 className="font-medium text-secondary-900">{step.name}</h3>
+                    {step.inProgress && step.progress && (
+                      <div className="mt-2">
+                        <div className="progress-bar">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${step.progress}%` }}
+                          />
+                        </div>
+                        <p className="text-sm text-secondary-600 mt-1">
+                          {step.progress}% complete
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                <div className="flex-grow">
-                  <h3 className="font-medium text-secondary-900">{step.name}</h3>
-                  {step.inProgress && step.progress && (
-                    <div className="mt-2">
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{ width: `${step.progress}%` }}
-                        />
-                      </div>
-                      <p className="text-sm text-secondary-600 mt-1">
-                        {step.progress}% complete
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {messages.length > 0 && (
           <div className="card">

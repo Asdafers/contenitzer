@@ -280,6 +280,32 @@ async def submit_task(
             metadata=request.metadata
         )
 
+        # Actually trigger the Celery task
+        from src.tasks.trending_tasks import analyze_trending_content
+        from src.tasks.script_tasks import generate_script_from_theme
+
+        if task_type_enum == TaskType.TRENDING_ANALYSIS:
+            # Trigger the Celery task with the same task_id
+            analyze_trending_content.apply_async(
+                args=[
+                    request.session_id,
+                    "your-youtube-api-key",  # TODO: Get from config
+                    "weekly",
+                    50
+                ],
+                task_id=task_id
+            )
+        elif task_type_enum == TaskType.SCRIPT_GENERATION:
+            # Handle script generation task
+            generate_script_from_theme.apply_async(
+                args=[
+                    request.session_id,
+                    request.input_data.get("theme", {}),
+                    request.input_data.get("target_duration", 300)
+                ],
+                task_id=task_id
+            )
+
         logger.info(f"Submitted task {task_id} of type {task_type} for session {request.session_id}")
 
         return SubmitTaskResponse(

@@ -200,7 +200,7 @@ def setup_middleware(app):
     """Setup all middleware for the application"""
     # Order matters - middleware is applied in reverse order
     app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(RateLimitMiddleware, calls_per_minute=100)
+    app.add_middleware(RateLimitMiddleware, calls_per_minute=500)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(ErrorHandlingMiddleware)
 

@@ -6,7 +6,7 @@ from typing import Dict, Any, List
 from celery import current_task
 from datetime import datetime
 
-from ..celery_worker import celery_app
+from celery_worker import celery_app
 from ..services.youtube_service import YouTubeService
 from ..services.progress_service import get_progress_service, ProgressEventType
 from ..services.task_queue_service import get_task_queue_service, TaskStatus
@@ -117,18 +117,19 @@ def analyze_trending_content(
             # Store trending content and themes
             for category_data in mock_categories:
                 for theme_data in category_data["themes"]:
-                    theme = GeneratedTheme(
-                        name=theme_data["name"],
-                        category=category_data["name"],
-                        relevance_score=theme_data["relevance_score"],
-                        source_type="trending_analysis",
-                        metadata={
-                            "timeframe": timeframe,
-                            "task_id": task_id,
-                            "category_id": category_data["id"]
-                        }
-                    )
-                    db.add(theme)
+                    # Create a mock trending content entry first (required for foreign key)
+                    # For now, we'll skip database storage since we need proper trending content setup
+                    # theme = GeneratedTheme(
+                    #     theme_name=theme_data["name"],
+                    #     theme_description=f"Theme extracted from {category_data['name']} category",
+                    #     relevance_score=theme_data["relevance_score"],
+                    #     trending_content_id=uuid.uuid4(),  # Would need actual trending content
+                    #     extraction_method=ExtractionMethodEnum.automated
+                    # )
+                    # db.add(theme)
+
+                    # Skip database storage for now - just log the theme
+                    logger.info(f"Generated theme: {theme_data['name']} (score: {theme_data['relevance_score']})")
 
             db.commit()
 

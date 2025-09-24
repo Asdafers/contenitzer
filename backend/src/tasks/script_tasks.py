@@ -7,7 +7,7 @@ from celery import current_task
 from datetime import datetime
 import uuid
 
-from ..celery_worker import celery_app
+from celery_worker import celery_app
 from ..services.script_service import ScriptService
 from ..services.gemini_service import GeminiService
 from ..services.progress_service import get_progress_service, ProgressEventType

@@ -70,15 +70,17 @@ def get_db_session():
         session.close()
 
 
-def get_db() -> Session:
+def get_db():
     """Dependency for FastAPI to get database session"""
     db = SessionLocal()
     try:
-        return db
+        yield db
     except Exception as e:
-        db.close()
-        logger.error(f"Failed to create database session: {e}")
+        db.rollback()
+        logger.error(f"Database session error: {e}")
         raise
+    finally:
+        db.close()
 
 
 class DatabaseManager:

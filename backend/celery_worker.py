@@ -16,9 +16,6 @@ celery_app = Celery(
     include=[
         "src.tasks.trending_tasks",
         "src.tasks.script_tasks",
-        "src.tasks.media_tasks",
-        "src.tasks.video_tasks",
-        "src.tasks.upload_tasks",
     ]
 )
 
@@ -35,9 +32,6 @@ celery_app.conf.update(
     task_routes={
         'src.tasks.trending_tasks.*': {'queue': 'trending'},
         'src.tasks.script_tasks.*': {'queue': 'script'},
-        'src.tasks.media_tasks.*': {'queue': 'media'},
-        'src.tasks.video_tasks.*': {'queue': 'video'},
-        'src.tasks.upload_tasks.*': {'queue': 'upload'},
     },
 
     # Worker settings

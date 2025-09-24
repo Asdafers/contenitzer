@@ -1,5 +1,5 @@
 // WebSocket service for real-time progress tracking
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // Browser-compatible EventEmitter implementation
 class EventEmitter {
@@ -59,14 +59,18 @@ class WebSocketManager extends EventEmitter {
   private subscriptions: Set<string> = new Set();
   private pingInterval: number | null = null;
 
-  constructor(url?: string) {
+  constructor(url?: string, sessionId?: string) {
     super();
-    this.url = url || this.getWebSocketUrl();
+    this.url = url || this.getWebSocketUrl(sessionId);
   }
 
-  private getWebSocketUrl(): string {
+  private getWebSocketUrl(sessionId?: string): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.host}`;
+    // Use backend port (8000) instead of frontend port (3001)
+    const host = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.hostname}:8000`;
+    if (sessionId) {
+      return `${host}/ws/progress/${sessionId}`;
+    }
     return `${host}/ws`;
   }
 
@@ -85,12 +89,25 @@ class WebSocketManager extends EventEmitter {
 
       this.isConnecting = true;
 
+      // Add connection timeout to prevent UI freeze
+      const connectionTimeout = setTimeout(() => {
+        if (this.isConnecting) {
+          console.warn('[WebSocket] Connection timeout');
+          this.isConnecting = false;
+          if (this.ws) {
+            this.ws.close();
+          }
+          reject(new Error('WebSocket connection timeout'));
+        }
+      }, 5000); // 5 second timeout
+
       try {
         console.log(`[WebSocket] Connecting to ${this.url}...`);
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
           console.log('[WebSocket] Connected successfully');
+          clearTimeout(connectionTimeout);
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.startPing();
@@ -100,6 +117,7 @@ class WebSocketManager extends EventEmitter {
 
         this.ws.onclose = (event) => {
           console.log(`[WebSocket] Connection closed: ${event.code} ${event.reason}`);
+          clearTimeout(connectionTimeout);
           this.isConnecting = false;
           this.stopPing();
           this.emit('disconnected', event);
@@ -112,6 +130,7 @@ class WebSocketManager extends EventEmitter {
 
         this.ws.onerror = (event) => {
           console.error('[WebSocket] Error:', event);
+          clearTimeout(connectionTimeout);
           this.isConnecting = false;
           this.emit('error', event);
           reject(event);
@@ -119,14 +138,15 @@ class WebSocketManager extends EventEmitter {
 
         this.ws.onmessage = (event) => {
           try {
-            const message: WebSocketMessage = JSON.parse(event.data);
-            this.handleMessage(message);
+            const data = JSON.parse(event.data);
+            this.handleProgressMessage(data);
           } catch (error) {
             console.error('[WebSocket] Failed to parse message:', error);
           }
         };
 
       } catch (error) {
+        clearTimeout(connectionTimeout);
         this.isConnecting = false;
         reject(error);
       }
@@ -142,29 +162,38 @@ class WebSocketManager extends EventEmitter {
     this.subscriptions.clear();
   }
 
-  private handleMessage(message: WebSocketMessage): void {
-    console.log(`[WebSocket] Received ${message.type}:`, message.data);
+  private handleProgressMessage(data: any): void {
+    console.log(`[WebSocket] Received progress event:`, data);
 
-    switch (message.type) {
-      case 'task_update':
-        this.emit('taskUpdate', message.data as TaskProgress);
-        this.emit(`task:${message.data.task_id}`, message.data);
-        break;
+    // Backend sends progress events with this format:
+    // { event_type, task_id, message, progress, timestamp, data }
 
-      case 'error':
-        this.emit('error', message.data);
-        break;
+    this.emit('progressUpdate', data);
 
-      case 'ping':
-        this.send({ type: 'pong', data: {}, timestamp: Date.now() });
-        break;
+    if (data.task_id) {
+      this.emit(`task:${data.task_id}`, data);
+    }
 
-      case 'pong':
-        // Handle pong response
-        break;
+    // Convert to our TaskProgress format for compatibility
+    if (data.event_type && data.task_id) {
+      const taskProgress: TaskProgress = {
+        task_id: data.task_id,
+        status: this.mapEventTypeToStatus(data.event_type),
+        progress: data.progress || 0,
+        metadata: data.data || {}
+      };
 
-      default:
-        console.warn('[WebSocket] Unknown message type:', message.type);
+      this.emit('taskUpdate', taskProgress);
+    }
+  }
+
+  private mapEventTypeToStatus(eventType: string): 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' {
+    switch (eventType) {
+      case 'task_started': return 'running';
+      case 'task_progress': return 'running';
+      case 'task_completed': return 'completed';
+      case 'task_failed': return 'failed';
+      default: return 'pending';
     }
   }
 
@@ -245,31 +274,37 @@ class WebSocketManager extends EventEmitter {
   }
 }
 
-// Create singleton instance
+// Session-based WebSocket managers
+const wsManagers: { [sessionId: string]: WebSocketManager } = {};
+
+// Get or create WebSocket manager for a session
+export const getWebSocketManager = (sessionId: string): WebSocketManager => {
+  if (!wsManagers[sessionId]) {
+    wsManagers[sessionId] = new WebSocketManager(undefined, sessionId);
+  }
+  return wsManagers[sessionId];
+};
+
+// Default instance for backward compatibility
 export const wsManager = new WebSocketManager();
 
 // React hook for using WebSocket in components
-export const useWebSocket = () => {
-  const connect = () => wsManager.connect();
-  const disconnect = () => wsManager.disconnect();
-  const subscribeToTask = (taskId: string) => wsManager.subscribeToTask(taskId);
-  const unsubscribeFromTask = (taskId: string) => wsManager.unsubscribeFromTask(taskId);
-  const isConnected = () => wsManager.isConnected();
-  const getConnectionState = () => wsManager.getConnectionState();
+export const useWebSocket = (sessionId?: string) => {
+  const manager = sessionId ? getWebSocketManager(sessionId) : wsManager;
 
   return {
-    connect,
-    disconnect,
-    subscribeToTask,
-    unsubscribeFromTask,
-    isConnected,
-    getConnectionState,
+    connect: () => manager.connect(),
+    disconnect: () => manager.disconnect(),
+    subscribeToTask: (taskId: string) => manager.subscribeToTask(taskId),
+    unsubscribeFromTask: (taskId: string) => manager.unsubscribeFromTask(taskId),
+    isConnected: () => manager.isConnected(),
+    getConnectionState: () => manager.getConnectionState(),
     on: (event: string, listener: (...args: any[]) => void) => {
-      wsManager.on(event, listener);
-      return () => wsManager.off(event, listener);
+      manager.on(event, listener);
+      return () => manager.off(event, listener);
     },
     off: (event: string, listener: (...args: any[]) => void) => {
-      wsManager.off(event, listener);
+      manager.off(event, listener);
     }
   };
 };

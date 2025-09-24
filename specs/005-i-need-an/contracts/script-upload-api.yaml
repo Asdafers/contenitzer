@@ -1,0 +1,268 @@
+openapi: 3.0.3
+info:
+  title: Script Upload API
+  description: API endpoints for uploading and managing user scripts
+  version: 1.0.0
+
+paths:
+  /api/v1/scripts/upload:
+    post:
+      summary: Upload script content
+      description: Upload script content to use instead of generation
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Script file (text/plain)
+                content:
+                  type: string
+                  description: Script content as text (alternative to file)
+                workflow_id:
+                  type: string
+                  format: uuid
+                  description: Associated workflow ID
+              oneOf:
+                - required: [file, workflow_id]
+                - required: [content, workflow_id]
+      responses:
+        '201':
+          description: Script uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /api/v1/scripts/{script_id}:
+    get:
+      summary: Get uploaded script
+      description: Retrieve uploaded script content
+      parameters:
+        - name: script_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Script content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScriptResponse'
+        '404':
+          description: Script not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete uploaded script
+      description: Remove uploaded script content
+      parameters:
+        - name: script_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Script deleted successfully
+        '404':
+          description: Script not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/workflows/{workflow_id}/mode:
+    put:
+      summary: Set workflow mode
+      description: Set workflow mode to GENERATE or UPLOAD
+      parameters:
+        - name: workflow_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [GENERATE, UPLOAD]
+                  description: Workflow processing mode
+              required:
+                - mode
+      responses:
+        '200':
+          description: Workflow mode updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowModeResponse'
+        '400':
+          description: Invalid mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    UploadResponse:
+      type: object
+      properties:
+        script_id:
+          type: string
+          format: uuid
+          description: Unique identifier for uploaded script
+        status:
+          type: string
+          enum: [PENDING, VALID, INVALID]
+          description: Validation status
+        message:
+          type: string
+          description: Success message
+        file_name:
+          type: string
+          description: Original filename (if applicable)
+        content_length:
+          type: integer
+          description: Size of uploaded content in characters
+        upload_timestamp:
+          type: string
+          format: date-time
+          description: When script was uploaded
+      required:
+        - script_id
+        - status
+        - message
+        - content_length
+        - upload_timestamp
+
+    ScriptResponse:
+      type: object
+      properties:
+        script_id:
+          type: string
+          format: uuid
+        content:
+          type: string
+          description: Script content
+        file_name:
+          type: string
+          description: Original filename
+        validation_status:
+          type: string
+          enum: [PENDING, VALID, INVALID]
+        upload_timestamp:
+          type: string
+          format: date-time
+        workflow_id:
+          type: string
+          format: uuid
+      required:
+        - script_id
+        - content
+        - validation_status
+        - upload_timestamp
+        - workflow_id
+
+    WorkflowModeResponse:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum: [GENERATE, UPLOAD]
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - workflow_id
+        - mode
+        - updated_at
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Human-readable error message
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - error
+        - message
+        - timestamp
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              issue:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - error
+        - message
+        - details
+        - timestamp
