@@ -284,7 +284,7 @@ async def submit_task(
         # Actually trigger the Celery task
         from src.tasks.trending_tasks import analyze_trending_content
         from src.tasks.script_tasks import generate_script_from_theme
-        from src.tasks.media_tasks import generate_media_from_script
+        from src.tasks.media_tasks import generate_media_from_script, compose_video
 
         if task_type_enum == TaskType.TRENDING_ANALYSIS:
             # Trigger the Celery task with the same task_id
@@ -314,6 +314,16 @@ async def submit_task(
                     request.session_id,
                     request.input_data.get("script_id"),
                     request.input_data.get("media_options", {})
+                ],
+                task_id=task_id
+            )
+        elif task_type_enum == TaskType.VIDEO_COMPOSITION:
+            # Handle video composition task
+            compose_video.apply_async(
+                args=[
+                    request.session_id,
+                    request.input_data.get("media_assets", {}),
+                    request.input_data.get("composition_options", {})
                 ],
                 task_id=task_id
             )
