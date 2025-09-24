@@ -179,15 +179,20 @@ def generate_media_from_script(
         error_msg = f"Media generation failed: {str(e)}"
         logger.error(f"Task {task_id} failed: {error_msg}")
 
-        # Publish error
-        progress_service.publish_progress(
-            session_id=session_id,
-            event_type=ProgressEventType.TASK_FAILED,
-            message=error_msg,
-            task_id=task_id
-        )
+        try:
+            # Publish error
+            progress_service.publish_progress(
+                session_id=session_id,
+                event_type=ProgressEventType.TASK_FAILED,
+                message=error_msg,
+                task_id=task_id
+            )
 
-        task_queue.update_task_status(task_id, TaskStatus.FAILED, error_message=error_msg)
+            task_queue.update_task_status(task_id, TaskStatus.FAILED, error_message=error_msg)
+        except Exception as cleanup_error:
+            logger.error(f"Failed to cleanup task {task_id}: {cleanup_error}")
+
+        # Always re-raise to ensure Celery knows the task failed
         raise
 
 
