@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import uuid
 import logging
+import os
 
 from ..services.task_queue_service import (
     TaskQueueService,
@@ -290,7 +291,7 @@ async def submit_task(
             analyze_trending_content.apply_async(
                 args=[
                     request.session_id,
-                    "your-youtube-api-key",  # TODO: Get from config
+                    os.getenv("YOUTUBE_API_KEY", ""),  # Set via environment variable
                     "weekly",
                     50
                 ],

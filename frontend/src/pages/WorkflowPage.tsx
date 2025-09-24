@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from '../services/websocket';
 import { WorkflowModeSelector } from '../components/Workflow/WorkflowModeSelector';
 import { ScriptUploadComponent } from '../components/ScriptUpload/ScriptUploadComponent';
@@ -15,7 +15,8 @@ interface WorkflowStep {
 }
 
 export default function WorkflowPage() {
-  console.log('=== WORKFLOW PAGE RENDERED ===');
+  // Reduced debug logging
+  // console.log('=== WORKFLOW PAGE RENDERED ===');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [workflowMode, setWorkflowMode] = useState<'GENERATE' | 'UPLOAD' | null>(null);
   const [workflowId, setWorkflowId] = useState<string | null>(null);
@@ -57,11 +58,11 @@ export default function WorkflowPage() {
     console.error('Script upload error:', error);
   }, []);
 
-  // Hooks for workflow and script upload
-  const { workflowState, createWorkflow, setWorkflowMode: setMode } = useWorkflow();
-  const { uploadState, uploadScript } = useScriptUpload({
-    onSuccess: handleUploadSuccess
-  });
+  // Temporarily disable complex hooks to isolate the issue
+  // const { workflowState, createWorkflow, setWorkflowMode: setMode } = useWorkflow();
+  // const { uploadState, uploadScript } = useScriptUpload({
+  //   onSuccess: handleUploadSuccess
+  // });
 
   useEffect(() => {
     // Create session only once on component mount
@@ -162,17 +163,75 @@ export default function WorkflowPage() {
   };
 
   const handleModeSelect = useCallback(async (mode: 'GENERATE' | 'UPLOAD') => {
+    // Prevent multiple simultaneous calls using ref
+    if (modeSelectInProgressRef.current || isSelectingMode) {
+      console.log('Mode selection already in progress, ignoring');
+      return;
+    }
+
     try {
-      // Create workflow if it doesn't exist
+      console.log('=== HANDLE MODE SELECT CALLED ===', { mode, workflowId });
+      modeSelectInProgressRef.current = true;
+      setIsSelectingMode(true);
+
+      // Set workflow mode first to prevent circular dependencies
+      console.log('Setting workflow mode...');
+      setWorkflowMode(mode);
+
+      // Create workflow if it doesn't exist (after setting mode)
       let currentWorkflowId = workflowId;
       if (!currentWorkflowId) {
-        currentWorkflowId = await createWorkflow('Content Creation Workflow');
-        setWorkflowId(currentWorkflowId);
-      }
+        console.log('Creating workflow...');
+        try {
+          console.log('🚀 UPDATED: About to make fetch call directly to localhost:8000 (bypassing proxy)');
+          const response = await fetch('http://localhost:8000/api/v1/workflows', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: 'Content Creation Workflow' })
+          });
+          console.log('Fetch call completed, response:', response.status, response.statusText);
 
-      // Set workflow mode
-      await setMode(currentWorkflowId, mode);
-      setWorkflowMode(mode);
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Workflow creation failed:', response.status, errorText);
+            throw new Error(`Failed to create workflow: ${response.status}`);
+          }
+
+          console.log('About to parse JSON response');
+          const data = await response.json();
+          console.log('JSON parsed successfully:', data);
+          currentWorkflowId = data.workflow_id;
+          console.log('Workflow created with ID:', currentWorkflowId);
+
+          // Set workflow ID after successful creation
+          setWorkflowId(currentWorkflowId);
+          console.log('Workflow ID state updated');
+
+          // Set workflow mode on backend
+          console.log('Setting workflow mode on backend...');
+          const modeResponse = await fetch(`http://localhost:8000/api/v1/workflows/${currentWorkflowId}/mode`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+          });
+
+          if (!modeResponse.ok) {
+            const errorText = await modeResponse.text();
+            console.error('Mode setting failed:', modeResponse.status, errorText);
+            // Don't throw error here - continue with frontend-only mode
+          } else {
+            console.log('Workflow mode set successfully on backend');
+          }
+        } catch (error) {
+          console.error('Workflow creation error:', error);
+          console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          });
+          // Continue without backend workflow - frontend-only mode
+        }
+      }
 
       // Update steps based on mode
       if (mode === 'UPLOAD') {
@@ -196,10 +255,15 @@ export default function WorkflowPage() {
           return step;
         }));
       }
+
+      console.log('=== HANDLE MODE SELECT COMPLETED ===');
     } catch (error) {
       console.error('Failed to set workflow mode:', error);
+    } finally {
+      modeSelectInProgressRef.current = false;
+      setIsSelectingMode(false);
     }
-  }, [workflowId, createWorkflow, setMode]);
+  }, []); // Remove workflowId dependency to prevent recreation when it changes
 
   const handleScriptUpload = async (content?: string, file?: File) => {
     if (!workflowId) return;
@@ -212,6 +276,8 @@ export default function WorkflowPage() {
   };
 
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const [isSelectingMode, setIsSelectingMode] = useState(false);
+  const modeSelectInProgressRef = useRef(false);
 
   const startWorkflow = useCallback(async () => {
     if (!sessionId || !workflowMode || isWorkflowRunning) return;
@@ -311,13 +377,13 @@ export default function WorkflowPage() {
             </h2>
             <WorkflowModeSelector
               onModeSelect={handleModeSelect}
-              disabled={workflowState.isLoading}
+              disabled={false}
             />
-            {workflowState.error && (
+            {/* {workflowState.error && (
               <div className="alert alert-error mt-4">
                 {workflowState.error}
               </div>
-            )}
+            )} */}
           </div>
         )}
 
@@ -332,11 +398,11 @@ export default function WorkflowPage() {
               onUploadError={handleUploadError}
               workflowId={workflowId || ''}
             />
-            {uploadState.error && (
+            {/* {uploadState.error && (
               <div className="alert alert-error mt-4">
                 {uploadState.error}
               </div>
-            )}
+            )} */}
           </div>
         )}
 
