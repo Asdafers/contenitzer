@@ -283,6 +283,7 @@ async def submit_task(
         # Actually trigger the Celery task
         from src.tasks.trending_tasks import analyze_trending_content
         from src.tasks.script_tasks import generate_script_from_theme
+        from src.tasks.media_tasks import generate_media_from_script
 
         if task_type_enum == TaskType.TRENDING_ANALYSIS:
             # Trigger the Celery task with the same task_id
@@ -302,6 +303,16 @@ async def submit_task(
                     request.session_id,
                     request.input_data.get("theme", {}),
                     request.input_data.get("target_duration", 300)
+                ],
+                task_id=task_id
+            )
+        elif task_type_enum == TaskType.MEDIA_GENERATION:
+            # Handle media generation task
+            generate_media_from_script.apply_async(
+                args=[
+                    request.session_id,
+                    request.input_data.get("script_id"),
+                    request.input_data.get("media_options", {})
                 ],
                 task_id=task_id
             )

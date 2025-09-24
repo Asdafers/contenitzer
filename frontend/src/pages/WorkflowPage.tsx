@@ -34,16 +34,33 @@ export default function WorkflowPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
+  // Create stable callback functions to prevent hook recreation
+  const handleUploadSuccess = useCallback((scriptId: string) => {
+    setUploadedScriptId(scriptId);
+    // Skip script generation step when upload succeeds
+    setSteps(prev => prev.map(step =>
+      step.id === 'script' ? { ...step, completed: true } : step
+    ));
+  }, []);
+
+  const handleUploadSuccessFromComponent = useCallback((scriptId: string, validationStatus: 'PENDING' | 'VALID' | 'INVALID') => {
+    console.log('Upload success callback:', { scriptId, validationStatus });
+    setUploadedScriptId(scriptId);
+    setValidationStatus(validationStatus);
+    // Skip script generation step when upload succeeds
+    setSteps(prev => prev.map(step =>
+      step.id === 'script' ? { ...step, completed: true } : step
+    ));
+  }, []);
+
+  const handleUploadError = useCallback((error: string) => {
+    console.error('Script upload error:', error);
+  }, []);
+
   // Hooks for workflow and script upload
   const { workflowState, createWorkflow, setWorkflowMode: setMode } = useWorkflow();
   const { uploadState, uploadScript } = useScriptUpload({
-    onSuccess: (scriptId) => {
-      setUploadedScriptId(scriptId);
-      // Skip script generation step when upload succeeds
-      setSteps(prev => prev.map(step =>
-        step.id === 'script' ? { ...step, completed: true } : step
-      ));
-    }
+    onSuccess: handleUploadSuccess
   });
 
   useEffect(() => {
@@ -61,61 +78,74 @@ export default function WorkflowPage() {
     return () => clearInterval(interval);
   }, []); // Empty dependency array to prevent infinite loop
 
-  useEffect(() => {
-    // Connect to WebSocket when session is available (with delay to prevent UI blocking)
-    if (sessionId) {
-      console.log('Connecting to WebSocket for session:', sessionId);
+  // Progress event handler function (stable reference)
+  const handleProgressUpdate = useCallback((data: any) => {
+    console.log('Progress update received:', data);
+    setMessages(prev => [...prev, data]);
 
-      // Use setTimeout to make connection non-blocking
-      const connectTimer = setTimeout(() => {
-        connect().catch(error => {
-          console.error('Failed to connect to WebSocket:', error);
-        });
-      }, 100); // Small delay to prevent UI blocking
-
-      // Listen for progress updates
-      const unsubscribeProgress = on('progressUpdate', (data: any) => {
-        console.log('Progress update received:', data);
-        setMessages(prev => [...prev, data]);
-
-        // Update step progress based on event type
-        if (data.event_type === 'task_started') {
-          setSteps(prev => prev.map(step =>
-            step.id === 'trending'
-              ? { ...step, name: 'Trending Analysis', inProgress: true, completed: false, progress: 0 }
-              : step
-          ));
-        } else if (data.event_type === 'task_progress') {
-          setSteps(prev => prev.map(step =>
-            step.id === 'trending'
-              ? { ...step, name: 'Trending Analysis', inProgress: true, completed: false, progress: data.progress || 0 }
-              : step
-          ));
-        } else if (data.event_type === 'task_completed') {
-          setSteps(prev => prev.map(step =>
-            step.id === 'trending'
-              ? { ...step, name: 'Trending Analysis', inProgress: false, completed: true, progress: 100 }
-              : step
-          ));
-          // Reset workflow running state after task completes
-          setIsWorkflowRunning(false);
-        } else if (data.event_type === 'task_failed') {
-          setSteps(prev => prev.map(step =>
-            step.id === 'trending'
-              ? { ...step, name: 'Trending Analysis (Failed)', inProgress: false, completed: false, progress: 0 }
-              : step
-          ));
-          setIsWorkflowRunning(false);
-        }
-      });
-
-      return () => {
-        clearTimeout(connectTimer);
-        unsubscribeProgress();
-        disconnect();
-      };
+    // Update step progress based on event type and message content
+    if (data.event_type === 'task_started') {
+      if (data.message?.includes('trending') || data.message?.includes('analysis')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'trending'
+            ? { ...step, name: 'Trending Analysis', inProgress: true, completed: false, progress: 0 }
+            : step
+        ));
+      } else if (data.message?.includes('media') || data.message?.includes('generation')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'media'
+            ? { ...step, name: 'Media Generation', inProgress: true, completed: false, progress: 0 }
+            : step
+        ));
+      }
+    } else if (data.event_type === 'task_progress') {
+      if (data.message?.includes('trending') || data.message?.includes('YouTube') || data.message?.includes('videos')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'trending'
+            ? { ...step, name: 'Trending Analysis', inProgress: true, completed: false, progress: data.progress || 0 }
+            : step
+        ));
+      } else if (data.message?.includes('media') || data.message?.includes('assets') || data.message?.includes('audio') || data.message?.includes('video')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'media'
+            ? { ...step, name: 'Media Generation', inProgress: true, completed: false, progress: data.progress || 0 }
+            : step
+        ));
+      }
+    } else if (data.event_type === 'task_completed') {
+      if (data.message?.includes('trending') || data.message?.includes('analysis')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'trending'
+            ? { ...step, name: 'Trending Analysis', inProgress: false, completed: true, progress: 100 }
+            : step
+        ));
+        // Don't reset workflow running state here - let media generation continue
+      } else if (data.message?.includes('media') || data.message?.includes('assets')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'media'
+            ? { ...step, name: 'Media Generation', inProgress: false, completed: true, progress: 100 }
+            : step
+        ));
+        // Reset workflow running state after media generation completes
+        setIsWorkflowRunning(false);
+      }
+    } else if (data.event_type === 'task_failed') {
+      if (data.message?.includes('trending') || data.message?.includes('analysis')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'trending'
+            ? { ...step, name: 'Trending Analysis (Failed)', inProgress: false, completed: false, progress: 0 }
+            : step
+        ));
+      } else if (data.message?.includes('media') || data.message?.includes('generation')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'media'
+            ? { ...step, name: 'Media Generation (Failed)', inProgress: false, completed: false, progress: 0 }
+            : step
+        ));
+      }
+      setIsWorkflowRunning(false);
     }
-  }, [sessionId]); // Only depend on sessionId, not the functions
+  }, []); // Empty dependency array - this function is stable
 
   const createSession = async () => {
     try {
@@ -131,7 +161,7 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleModeSelect = async (mode: 'GENERATE' | 'UPLOAD') => {
+  const handleModeSelect = useCallback(async (mode: 'GENERATE' | 'UPLOAD') => {
     try {
       // Create workflow if it doesn't exist
       let currentWorkflowId = workflowId;
@@ -169,7 +199,7 @@ export default function WorkflowPage() {
     } catch (error) {
       console.error('Failed to set workflow mode:', error);
     }
-  };
+  }, [workflowId, createWorkflow, setMode]);
 
   const handleScriptUpload = async (content?: string, file?: File) => {
     if (!workflowId) return;
@@ -191,6 +221,16 @@ export default function WorkflowPage() {
 
       // Clear previous messages
       setMessages([]);
+
+      // Connect to WebSocket now that workflow is starting
+      console.log('Connecting to WebSocket for workflow execution');
+      await connect().catch(error => {
+        console.error('Failed to connect to WebSocket:', error);
+        // Continue workflow even if WebSocket fails
+      });
+
+      // Set up progress event listener now that we're connected
+      const unsubscribeProgress = on('progressUpdate', handleProgressUpdate);
 
       if (workflowMode === 'GENERATE') {
         // Start trending analysis (first step for generation workflow)
@@ -214,22 +254,36 @@ export default function WorkflowPage() {
       } else if (workflowMode === 'UPLOAD') {
         // Skip trending analysis, go directly to next step (media generation)
         console.log('Skipping trending analysis - script already uploaded');
-        setSteps(prev => prev.map(step =>
-          step.id === 'media'
-            ? { ...step, inProgress: true, progress: 0 }
-            : step
-        ));
 
-        // TODO: Start media generation task
-        // For now, just complete immediately
-        setTimeout(() => {
+        if (!uploadedScriptId) {
+          throw new Error('No uploaded script ID available for media generation');
+        }
+
+        // Start media generation task
+        const response = await fetch('/api/tasks/submit/media_generation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            input_data: {
+              script_id: uploadedScriptId,
+              media_options: {
+                resolution: '1920x1080',
+                style: 'modern',
+                voice: 'professional'
+              }
+            },
+            priority: 'normal'
+          })
+        });
+
+        if (response.ok) {
           setSteps(prev => prev.map(step =>
             step.id === 'media'
-              ? { ...step, inProgress: false, completed: true, progress: 100 }
+              ? { ...step, inProgress: true, progress: 0 }
               : step
           ));
-          setIsWorkflowRunning(false);
-        }, 2000);
+        }
       }
     } catch (error) {
       console.error('Failed to start workflow:', error);
@@ -274,18 +328,8 @@ export default function WorkflowPage() {
               Upload Your Script
             </h2>
             <ScriptUploadComponent
-              onUploadSuccess={(scriptId, validationStatus) => {
-                console.log('Upload success callback:', { scriptId, validationStatus });
-                setUploadedScriptId(scriptId);
-                setValidationStatus(validationStatus);
-                // Skip script generation step when upload succeeds
-                setSteps(prev => prev.map(step =>
-                  step.id === 'script' ? { ...step, completed: true } : step
-                ));
-              }}
-              onUploadError={(error) => {
-                console.error('Script upload error:', error);
-              }}
+              onUploadSuccess={handleUploadSuccessFromComponent}
+              onUploadError={handleUploadError}
               workflowId={workflowId || ''}
             />
             {uploadState.error && (
