@@ -64,7 +64,7 @@ def generate_media_from_script(
 
             if uploaded_script:
                 script_content = uploaded_script.content
-                script_title = uploaded_script.filename or "Uploaded Script"
+                script_title = uploaded_script.file_name or "Uploaded Script"
                 logger.info(f"Found uploaded script {script_id}")
             else:
                 # Try to find in generated scripts
