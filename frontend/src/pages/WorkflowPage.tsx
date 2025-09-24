@@ -46,6 +46,7 @@ export default function WorkflowPage() {
 
   const handleUploadSuccessFromComponent = useCallback((scriptId: string, validationStatus: 'PENDING' | 'VALID' | 'INVALID') => {
     console.log('Upload success callback:', { scriptId, validationStatus });
+    console.log('Setting uploadedScriptId to:', scriptId);
     setUploadedScriptId(scriptId);
     setValidationStatus(validationStatus);
     // Skip script generation step when upload succeeds
@@ -79,6 +80,63 @@ export default function WorkflowPage() {
     return () => clearInterval(interval);
   }, []); // Empty dependency array to prevent infinite loop
 
+  // Video composition function - defined first to avoid hoisting issues
+  const startVideoComposition = useCallback(async () => {
+    if (!sessionId) {
+      console.log('startVideoComposition called but sessionId is null/undefined');
+      return;
+    }
+
+    try {
+      console.log('🎬 Starting video composition...', { sessionId });
+
+      // Update UI to show composition step as in progress
+      setSteps(prev => prev.map(step =>
+        step.id === 'compose'
+          ? { ...step, inProgress: true, progress: 0 }
+          : step
+      ));
+
+      console.log('🎬 About to make video composition API call...');
+
+      // Start video composition task
+      const response = await fetch('http://localhost:8000/api/tasks/submit/video_composition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          input_data: {
+            // The media assets will be retrieved from the previous task result
+            composition_options: {
+              resolution: '1920x1080',
+              format: 'mp4',
+              quality: 'high'
+            }
+          },
+          priority: 'normal'
+        })
+      });
+
+      console.log('🎬 Video composition API response:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        console.log('🎬 Error response body:', responseText);
+        throw new Error(`Failed to start video composition: ${response.status} - ${responseText}`);
+      }
+
+      const responseData = await response.json();
+      console.log('🎬 Video composition task submitted successfully:', responseData);
+    } catch (error) {
+      console.error('🎬 Failed to start video composition:', error);
+      setSteps(prev => prev.map(step =>
+        step.id === 'compose'
+          ? { ...step, name: 'Video Composition (Failed)', inProgress: false, completed: false }
+          : step
+      ));
+    }
+  }, [sessionId]);
+
   // Progress event handler function (stable reference)
   const handleProgressUpdate = useCallback((data: any) => {
     console.log('Progress update received:', data);
@@ -106,10 +164,16 @@ export default function WorkflowPage() {
             ? { ...step, name: 'Trending Analysis', inProgress: true, completed: false, progress: data.progress || 0 }
             : step
         ));
-      } else if (data.message?.includes('media') || data.message?.includes('assets') || data.message?.includes('audio') || data.message?.includes('video')) {
+      } else if (data.message?.includes('media') || data.message?.includes('assets') || data.message?.includes('audio')) {
         setSteps(prev => prev.map(step =>
           step.id === 'media'
             ? { ...step, name: 'Media Generation', inProgress: true, completed: false, progress: data.progress || 0 }
+            : step
+        ));
+      } else if (data.message?.includes('composition') || data.message?.includes('timeline') || data.message?.includes('render')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'compose'
+            ? { ...step, name: 'Video Composition', inProgress: true, completed: false, progress: data.progress || 0 }
             : step
         ));
       }
@@ -127,7 +191,17 @@ export default function WorkflowPage() {
             ? { ...step, name: 'Media Generation', inProgress: false, completed: true, progress: 100 }
             : step
         ));
-        // Reset workflow running state after media generation completes
+        // Automatically start video composition after media generation completes
+        console.log('Media generation completed, starting video composition...');
+        startVideoComposition();
+      } else if (data.message?.includes('composition') || data.message?.includes('video')) {
+        setSteps(prev => prev.map(step =>
+          step.id === 'compose'
+            ? { ...step, name: 'Video Composition', inProgress: false, completed: true, progress: 100 }
+            : step
+        ));
+        // Reset workflow running state after video composition completes
+        console.log('Video composition completed successfully!');
         setIsWorkflowRunning(false);
       }
     } else if (data.event_type === 'task_failed') {
@@ -146,7 +220,7 @@ export default function WorkflowPage() {
       }
       setIsWorkflowRunning(false);
     }
-  }, []); // Empty dependency array - this function is stable
+  }, [startVideoComposition]); // Include startVideoComposition to get latest sessionId
 
   const createSession = async () => {
     try {
@@ -320,8 +394,10 @@ export default function WorkflowPage() {
       } else if (workflowMode === 'UPLOAD') {
         // Skip trending analysis, go directly to next step (media generation)
         console.log('Skipping trending analysis - script already uploaded');
+        console.log('Current uploadedScriptId:', uploadedScriptId);
 
         if (!uploadedScriptId) {
+          console.error('uploadedScriptId is null/undefined when trying to start workflow');
           throw new Error('No uploaded script ID available for media generation');
         }
 
@@ -355,7 +431,7 @@ export default function WorkflowPage() {
       console.error('Failed to start workflow:', error);
       setIsWorkflowRunning(false);
     }
-  }, [sessionId, workflowMode, isWorkflowRunning]);
+  }, [sessionId, workflowMode, isWorkflowRunning, uploadedScriptId]);
 
   return (
     <div className="min-h-screen bg-secondary-50 py-8">
