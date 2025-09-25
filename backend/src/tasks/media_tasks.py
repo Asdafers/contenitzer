@@ -237,11 +237,15 @@ def compose_video(
 
             # Use real video composer
             options = composition_options or {}
+
+            # Get composition settings with safe null checking
+            settings = job.composition_settings if job.composition_settings else {}
+
             options.update({
                 "session_id": session_id,
                 "title": options.get("title", "Generated Video Content"),
-                "duration": job.composition_settings.get("duration", 180),  # Get duration from job
-                "resolution": job.composition_settings.get("resolution", "1920x1080"),  # Get resolution from job
+                "duration": settings.get("duration", 180),  # Get duration from job settings
+                "resolution": settings.get("resolution", "1920x1080"),  # Get resolution from job settings
                 "script_id": job.script_id
             })
 
@@ -295,22 +299,22 @@ def compose_video(
             db.commit()
             # No need to refresh since we're still in the same session
 
-        # Create result
-        result = {
-            "status": "success",
-            "video": {
-                "video_id": str(generated_video.id),
-                "title": generated_video.title,
-                "url": generated_video.url_path,
-                "duration": generated_video.duration,
-                "resolution": generated_video.resolution,
-                "file_size": generated_video.file_size,
-                "format": generated_video.format,
-                "file_path": generated_video.file_path
-            },
-            "job_id": job_id,
-            "composed_at": datetime.now().isoformat()
-        }
+            # Create result inside the session while generated_video is still attached
+            result = {
+                "status": "success",
+                "video": {
+                    "video_id": str(generated_video.id),
+                    "title": generated_video.title,
+                    "url": generated_video.url_path,
+                    "duration": generated_video.duration,
+                    "resolution": generated_video.resolution,
+                    "file_size": generated_video.file_size,
+                    "format": generated_video.format,
+                    "file_path": generated_video.file_path
+                },
+                "job_id": job_id,
+                "composed_at": datetime.now().isoformat()
+            }
 
         progress_service.publish_progress(
             session_id=session_id,
