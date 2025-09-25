@@ -38,7 +38,6 @@ class VideoProject(Base):
 
     # Relationships
     script = relationship("VideoScript", back_populates="project")
-    media_assets = relationship("MediaAsset", back_populates="project")
     composed_video = relationship("ComposedVideo", back_populates="project", uselist=False)
 
     def __repr__(self):

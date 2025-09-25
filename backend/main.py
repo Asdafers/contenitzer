@@ -4,10 +4,12 @@ import logging
 import os
 
 from src.api import trending, scripts, media, videos, sessions, tasks, websocket, setup, script_upload, workflow
+from src.api import video_generation, video_serving, job_management, media_assets
 from src.lib.middleware import setup_middleware
 from src.lib.database import DatabaseManager
 from src.lib.tasks import task_manager
 from src.lib.storage import storage_manager
+from src.config.static_files import configure_static_file_serving
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +48,12 @@ app.include_router(setup.router, tags=["setup"])
 app.include_router(script_upload.router, tags=["script-upload"])
 app.include_router(workflow.router, tags=["workflow"])
 
+# Include real video generation API routers
+app.include_router(video_generation.router, tags=["video-generation"])
+app.include_router(video_serving.router, tags=["video-serving"])
+app.include_router(job_management.router, tags=["job-management"])
+app.include_router(media_assets.router, tags=["media-assets"])
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
@@ -73,6 +81,33 @@ async def startup_event():
             logger.info(f"Cleaned up {cleaned} old tasks")
     except Exception as e:
         logger.warning(f"Task cleanup failed: {e}")
+
+    # Initialize video generation system
+    try:
+        from src.services.storage_manager import StorageManager
+        from src.lib.system_check import validate_system
+
+        # Initialize storage directories and records
+        storage_manager = StorageManager()
+        storage_records = storage_manager.initialize_storage_records()
+        logger.info(f"Initialized {len(storage_records)} storage directories for video generation")
+
+        # Run system health check
+        system_health = validate_system()
+        if system_health["ready_for_video_generation"]:
+            logger.info("✅ System ready for video generation")
+        else:
+            logger.warning("⚠️ Video generation system has issues - check system health")
+
+    except Exception as e:
+        logger.warning(f"Video generation system initialization failed: {e}")
+
+    # Configure static file serving for media files
+    try:
+        configure_static_file_serving(app)
+        logger.info("✅ Static file serving configured for media files")
+    except Exception as e:
+        logger.warning(f"Static file serving configuration failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():

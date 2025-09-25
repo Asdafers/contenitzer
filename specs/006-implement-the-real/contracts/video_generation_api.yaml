@@ -1,0 +1,329 @@
+openapi: 3.0.3
+info:
+  title: Real Video Generation API
+  description: API endpoints for actual video file generation and management
+  version: 1.0.0
+
+paths:
+  /api/videos/generate:
+    post:
+      summary: Generate actual video from script
+      description: Triggers real video generation process that creates actual video files
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                script_id:
+                  type: string
+                  format: uuid
+                  description: ID of the script to generate video from
+                session_id:
+                  type: string
+                  description: User session ID for progress tracking
+                options:
+                  type: object
+                  properties:
+                    resolution:
+                      type: string
+                      enum: ["1920x1080", "1280x720", "3840x2160"]
+                      default: "1920x1080"
+                    duration:
+                      type: integer
+                      minimum: 30
+                      maximum: 600
+                      description: Target duration in seconds
+                    quality:
+                      type: string
+                      enum: ["high", "medium", "low"]
+                      default: "high"
+                    include_audio:
+                      type: boolean
+                      default: true
+              required: [script_id, session_id]
+      responses:
+        '202':
+          description: Video generation job started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoGenerationJob'
+        '400':
+          description: Invalid request parameters
+        '404':
+          description: Script not found
+        '429':
+          description: Too many concurrent generation requests
+
+  /api/videos/{video_id}:
+    get:
+      summary: Get generated video information
+      parameters:
+        - name: video_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Video information retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedVideo'
+        '404':
+          description: Video not found
+        '202':
+          description: Video still being generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoGenerationJob'
+
+  /api/videos/{video_id}/download:
+    get:
+      summary: Download generated video file
+      parameters:
+        - name: video_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Video file download
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Video not found or not yet generated
+        '202':
+          description: Video still being generated
+
+  /api/videos/{video_id}/stream:
+    get:
+      summary: Stream generated video file
+      parameters:
+        - name: video_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: range
+          in: header
+          required: false
+          schema:
+            type: string
+            description: HTTP Range header for partial content
+      responses:
+        '200':
+          description: Full video stream
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Partial video content
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Video not found
+
+  /api/videos/jobs/{job_id}/status:
+    get:
+      summary: Get video generation job status
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoGenerationJob'
+        '404':
+          description: Job not found
+
+  /api/videos/jobs/{job_id}/cancel:
+    post:
+      summary: Cancel active video generation job
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job cancelled successfully
+        '404':
+          description: Job not found
+        '409':
+          description: Job cannot be cancelled (already completed or failed)
+
+  /api/media/assets/{asset_id}:
+    get:
+      summary: Get individual media asset
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Media asset file
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            audio/mp3:
+              schema:
+                type: string
+                format: binary
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Asset not found
+
+components:
+  schemas:
+    GeneratedVideo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        url:
+          type: string
+          description: Streaming/download URL
+        duration:
+          type: integer
+          description: Duration in seconds
+        resolution:
+          type: string
+          example: "1920x1080"
+        file_size:
+          type: integer
+          description: File size in bytes
+        format:
+          type: string
+          example: "mp4"
+        creation_timestamp:
+          type: string
+          format: date-time
+        completion_timestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [PENDING, GENERATING, COMPLETED, FAILED]
+        script_id:
+          type: string
+          format: uuid
+
+    VideoGenerationJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+        script_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, MEDIA_GENERATION, VIDEO_COMPOSITION, COMPLETED, FAILED]
+        progress_percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        estimated_completion:
+          type: string
+          format: date-time
+          nullable: true
+        resource_usage:
+          type: object
+          properties:
+            generation_time_seconds:
+              type: number
+            peak_memory_mb:
+              type: number
+            disk_space_used_mb:
+              type: number
+            cpu_time_seconds:
+              type: number
+
+    MediaAsset:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        asset_type:
+          type: string
+          enum: [IMAGE, AUDIO, VIDEO_CLIP, TEXT_OVERLAY]
+        url:
+          type: string
+          description: Access URL for the asset
+        duration:
+          type: integer
+          nullable: true
+          description: Duration in seconds (for audio/video)
+        metadata:
+          type: object
+          description: Type-specific properties
+        source_type:
+          type: string
+          enum: [GENERATED, STOCK, USER_UPLOADED]
+        creation_timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time

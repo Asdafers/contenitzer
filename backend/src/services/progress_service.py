@@ -25,6 +25,17 @@ class ProgressEventType(str, Enum):
     ERROR_OCCURRED = "error_occurred"
     INFO_MESSAGE = "info_message"
 
+    # Video generation specific events
+    VIDEO_GENERATION_STARTED = "video_generation_started"
+    VIDEO_GENERATION_PROGRESS = "video_generation_progress"
+    VIDEO_GENERATION_COMPLETED = "video_generation_completed"
+    VIDEO_GENERATION_FAILED = "video_generation_failed"
+    MEDIA_ASSET_CREATED = "media_asset_created"
+    VIDEO_COMPOSITION_STARTED = "video_composition_started"
+    VIDEO_COMPOSITION_PROGRESS = "video_composition_progress"
+    VIDEO_COMPOSITION_COMPLETED = "video_composition_completed"
+    VIDEO_FILE_READY = "video_file_ready"
+
 class ProgressServiceError(Exception):
     """Custom exception for progress service operations"""
     pass
@@ -396,6 +407,132 @@ class ProgressService(RedisService):
 
         except Exception as e:
             logger.error(f"Failed to add event to task progress: {e}")
+
+    # Video generation specific convenience methods
+    def publish_video_generation_started(
+        self,
+        session_id: str,
+        job_id: str,
+        script_id: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Publish video generation started event."""
+        video_metadata = {
+            "job_id": job_id,
+            "script_id": script_id,
+            "stage": "initialization",
+            **(metadata or {})
+        }
+
+        return self.publish_progress(
+            session_id=session_id,
+            event_type=ProgressEventType.VIDEO_GENERATION_STARTED,
+            message=f"Starting video generation for script {script_id}",
+            percentage=0,
+            task_id=job_id,
+            metadata=video_metadata
+        )
+
+    def publish_video_generation_progress(
+        self,
+        session_id: str,
+        job_id: str,
+        stage: str,
+        message: str,
+        percentage: int,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Publish video generation progress event."""
+        video_metadata = {
+            "job_id": job_id,
+            "stage": stage,
+            "current_operation": message,
+            **(metadata or {})
+        }
+
+        return self.publish_progress(
+            session_id=session_id,
+            event_type=ProgressEventType.VIDEO_GENERATION_PROGRESS,
+            message=message,
+            percentage=percentage,
+            task_id=job_id,
+            metadata=video_metadata
+        )
+
+    def publish_video_generation_completed(
+        self,
+        session_id: str,
+        job_id: str,
+        video_id: str,
+        video_url: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Publish video generation completed event."""
+        video_metadata = {
+            "job_id": job_id,
+            "video_id": video_id,
+            "video_url": video_url,
+            "stage": "completed",
+            **(metadata or {})
+        }
+
+        return self.publish_progress(
+            session_id=session_id,
+            event_type=ProgressEventType.VIDEO_GENERATION_COMPLETED,
+            message=f"Video generation completed successfully",
+            percentage=100,
+            task_id=job_id,
+            metadata=video_metadata
+        )
+
+    def publish_video_file_ready(
+        self,
+        session_id: str,
+        video_id: str,
+        video_url: str,
+        download_url: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Publish video file ready event."""
+        video_metadata = {
+            "video_id": video_id,
+            "video_url": video_url,
+            "download_url": download_url,
+            "ready_for_download": True,
+            **(metadata or {})
+        }
+
+        return self.publish_progress(
+            session_id=session_id,
+            event_type=ProgressEventType.VIDEO_FILE_READY,
+            message="Video file is ready for download and streaming",
+            percentage=100,
+            metadata=video_metadata
+        )
+
+    def publish_media_asset_created(
+        self,
+        session_id: str,
+        job_id: str,
+        asset_type: str,
+        asset_id: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Publish media asset created event."""
+        asset_metadata = {
+            "job_id": job_id,
+            "asset_type": asset_type,
+            "asset_id": asset_id,
+            **(metadata or {})
+        }
+
+        return self.publish_progress(
+            session_id=session_id,
+            event_type=ProgressEventType.MEDIA_ASSET_CREATED,
+            message=f"Created {asset_type.lower()} asset",
+            task_id=job_id,
+            metadata=asset_metadata
+        )
 
 # Global service instance
 _progress_service: Optional[ProgressService] = None

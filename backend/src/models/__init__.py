@@ -10,6 +10,9 @@ from .media_asset import MediaAsset
 from .composed_video import ComposedVideo
 from .uploaded_script import UploadedScript
 from .workflow import Workflow
+from .generated_video import GeneratedVideo
+from .video_generation_job import VideoGenerationJob
+from .media_storage import MediaStorage
 
 # Export all models
 __all__ = [
@@ -23,5 +26,8 @@ __all__ = [
     "MediaAsset",
     "ComposedVideo",
     "UploadedScript",
-    "Workflow"
+    "Workflow",
+    "GeneratedVideo",
+    "VideoGenerationJob",
+    "MediaStorage"
 ]
