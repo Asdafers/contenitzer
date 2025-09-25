@@ -254,15 +254,46 @@ def compose_video(
                 task_id=task_id
             )
 
-            # Compose the actual video (within the same session to avoid DetachedInstanceError)
-            generated_video = video_service.video_composer.compose_video(
-                assets, options, uuid.UUID(job_id)
+            # Create the GeneratedVideo record within this session
+            from ..models.generated_video import GeneratedVideo, GenerationStatusEnum as VideoStatus
+            import uuid as uuid_module
+            from pathlib import Path
+
+            video_id = uuid_module.uuid4()
+            filename = f"video_{video_id}.mp4"
+
+            # Create video record in the session
+            generated_video = GeneratedVideo(
+                id=video_id,
+                file_path=f"/code/contentizer/backend/media/videos/{filename}",
+                url_path=f"/media/videos/{filename}",
+                title=options.get("title", "Generated Video Content"),
+                duration=options["duration"],
+                resolution=options["resolution"],
+                format="mp4",
+                generation_status=VideoStatus.GENERATING,
+                script_id=options["script_id"],
+                session_id=options["session_id"],
+                generation_job_id=uuid.UUID(job_id),
+                creation_timestamp=datetime.now()
             )
 
-            # Add and commit the generated video within the same session
             db.add(generated_video)
+            db.flush()  # Get the ID assigned but don't commit yet
+
+            # Now compose the actual video file (without creating DB record)
+            video_info = video_service.video_composer.compose_video_file_only(
+                assets, options, generated_video.file_path
+            )
+
+            # Update video record with actual file properties
+            generated_video.file_size = video_info.get("file_size", 0)
+            generated_video.duration = video_info.get("duration", options["duration"])
+            generated_video.generation_status = VideoStatus.COMPLETED
+            generated_video.completion_timestamp = datetime.now()
+
             db.commit()
-            db.refresh(generated_video)
+            # No need to refresh since we're still in the same session
 
         # Create result
         result = {

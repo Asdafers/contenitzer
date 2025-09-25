@@ -148,6 +148,7 @@ class VideoComposer:
             generation_status=VideoStatus.GENERATING,
             script_id=options.get("script_id"),
             session_id=options.get("session_id", "unknown"),
+            generation_job_id=job_id,  # Add the missing generation_job_id
             creation_timestamp=datetime.now()
         )
 
@@ -328,6 +329,49 @@ class VideoComposer:
         except Exception as e:
             logger.error(f"Failed to validate output video: {e}")
             raise VideoComposerError(f"Video validation failed: {e}")
+
+    def compose_video_file_only(
+        self,
+        assets: List[MediaAsset],
+        output_options: Dict[str, Any],
+        output_file_path: str
+    ) -> Dict[str, Any]:
+        """
+        Compose video file without creating database record.
+
+        Args:
+            assets: List of MediaAsset objects to compose
+            output_options: Video output configuration
+            output_file_path: Path where video file should be created
+
+        Returns:
+            Dictionary with video file properties
+        """
+        try:
+            # Validate inputs
+            self._validate_composition_inputs(assets, output_options)
+
+            # Organize assets by type
+            asset_groups = self._group_assets_by_type(assets)
+
+            # Create composition timeline
+            timeline = self._create_composition_timeline(asset_groups, output_options)
+
+            # Compose video in stages
+            temp_video_path = self._compose_visual_track(timeline, output_options)
+            final_video_path = self._add_audio_tracks(
+                temp_video_path, asset_groups, output_options, output_file_path
+            )
+
+            # Validate final video and return properties
+            video_info = self._validate_output_video(final_video_path)
+
+            logger.info(f"Successfully composed video file at {output_file_path}")
+            return video_info
+
+        except Exception as e:
+            logger.error(f"Failed to compose video file: {e}")
+            raise VideoComposerError(f"Video file composition failed: {e}")
 
     def cleanup_temp_files(self, job_id: uuid.UUID):
         """Clean up temporary files created during composition."""
