@@ -114,22 +114,16 @@ def generate_media_from_script(
             }
 
             for asset in assets:
-                asset_data = {
-                    "id": str(asset.id),
-                    "url": asset.url_path,
-                    "duration": asset.duration,
-                    "file_path": asset.file_path,
-                    "asset_type": asset.asset_type.value,
-                    "source_type": asset.source_type.value
-                }
+                # Assets are already dictionaries, just use them directly
+                asset_data = asset
 
-                if asset.asset_type.value == "IMAGE":
+                if asset_data["asset_type"] == "IMAGE":
                     assets_by_type["background_images"].append(asset_data)
-                elif asset.asset_type.value == "AUDIO":
+                elif asset_data["asset_type"] == "AUDIO":
                     assets_by_type["audio_tracks"].append(asset_data)
-                elif asset.asset_type.value == "VIDEO_CLIP":
+                elif asset_data["asset_type"] == "VIDEO_CLIP":
                     assets_by_type["video_clips"].append(asset_data)
-                elif asset.asset_type.value == "TEXT_OVERLAY":
+                elif asset_data["asset_type"] == "TEXT_OVERLAY":
                     assets_by_type["text_overlays"].append(asset_data)
 
             # Complete task
@@ -137,7 +131,7 @@ def generate_media_from_script(
                 "status": "success",
                 "script_id": script_id,
                 "script_title": script_title,
-                "job_id": str(job.id),
+                "job_id": str(job_id),
                 "media_assets": assets_by_type,
                 "total_assets": len(assets),
                 "estimated_duration": generation_options["duration"],
@@ -213,7 +207,7 @@ def compose_video(
             task_id=task_id
         )
 
-        # Get media assets from job
+        # Get media assets from job and perform video composition within the same session
         with get_db_session() as db:
             from ..models.media_asset import MediaAsset
             assets = db.query(MediaAsset).filter(
@@ -223,37 +217,49 @@ def compose_video(
             if not assets:
                 raise ValueError(f"No media assets found for job {job_id}")
 
-        # Progress: Compositing layers
-        progress_service.publish_progress(
-            session_id=session_id,
-            event_type=ProgressEventType.TASK_PROGRESS,
-            message="Compositing video layers and effects",
-            percentage=50,
-            task_id=task_id
-        )
+            # Progress: Compositing layers
+            progress_service.publish_progress(
+                session_id=session_id,
+                event_type=ProgressEventType.TASK_PROGRESS,
+                message="Compositing video layers and effects",
+                percentage=50,
+                task_id=task_id
+            )
 
-        # Use real video composer
-        options = composition_options or {}
-        options.update({
-            "session_id": session_id,
-            "title": options.get("title", "Generated Video Content")
-        })
+            # Get job information to extract required options
+            from ..models.video_generation_job import VideoGenerationJob
+            job = db.query(VideoGenerationJob).filter(
+                VideoGenerationJob.id == uuid.UUID(job_id)
+            ).first()
 
-        # Progress: Rendering video
-        progress_service.publish_progress(
-            session_id=session_id,
-            event_type=ProgressEventType.TASK_PROGRESS,
-            message="Rendering final video file using FFmpeg",
-            percentage=80,
-            task_id=task_id
-        )
+            if not job:
+                raise ValueError(f"Video generation job {job_id} not found")
 
-        # Compose the actual video
-        generated_video = video_service.video_composer.compose_video(
-            assets, options, uuid.UUID(job_id)
-        )
+            # Use real video composer
+            options = composition_options or {}
+            options.update({
+                "session_id": session_id,
+                "title": options.get("title", "Generated Video Content"),
+                "duration": job.composition_settings.get("duration", 180),  # Get duration from job
+                "resolution": job.composition_settings.get("resolution", "1920x1080"),  # Get resolution from job
+                "script_id": job.script_id
+            })
 
-        with get_db_session() as db:
+            # Progress: Rendering video
+            progress_service.publish_progress(
+                session_id=session_id,
+                event_type=ProgressEventType.TASK_PROGRESS,
+                message="Rendering final video file using FFmpeg",
+                percentage=80,
+                task_id=task_id
+            )
+
+            # Compose the actual video (within the same session to avoid DetachedInstanceError)
+            generated_video = video_service.video_composer.compose_video(
+                assets, options, uuid.UUID(job_id)
+            )
+
+            # Add and commit the generated video within the same session
             db.add(generated_video)
             db.commit()
             db.refresh(generated_video)

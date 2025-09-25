@@ -84,7 +84,7 @@ class MediaAssetGenerator:
         job_id: uuid.UUID,
         script_content: str,
         options: Dict[str, Any]
-    ) -> List[MediaAsset]:
+    ) -> List[Dict[str, Any]]:
         """
         Generate all required media assets for a video generation job.
 
@@ -133,10 +133,24 @@ class MediaAssetGenerator:
                     )
                     generated_assets.append(music_asset)
 
+                # Convert SQLAlchemy objects to dictionaries BEFORE commit to avoid DetachedInstanceError
+                assets_data = []
+                for asset in generated_assets:
+                    asset_dict = {
+                        "id": str(asset.id),
+                        "url": asset.url_path,
+                        "duration": asset.duration,
+                        "file_path": asset.file_path,
+                        "asset_type": asset.asset_type.value,
+                        "source_type": asset.source_type.value,
+                        "metadata": asset.asset_metadata
+                    }
+                    assets_data.append(asset_dict)
+
                 db.commit()
 
-            logger.info(f"Generated {len(generated_assets)} assets for job {job_id}")
-            return generated_assets
+            logger.info(f"Generated {len(assets_data)} assets for job {job_id}")
+            return assets_data
 
         except Exception as e:
             logger.error(f"Failed to generate assets for job {job_id}: {e}")
@@ -241,21 +255,24 @@ class MediaAssetGenerator:
 
             # Generate file path (JSON file with text overlay data)
             filename = f"text_{scene['index']:03d}_{asset.id}.json"
-            asset.file_path = str(self.storage_manager.get_asset_path("temp") / filename)
-            asset.url_path = f"/media/assets/temp/{filename}"
+            file_path = Path(self.storage_manager.get_asset_path("temp") / filename)
 
-            # Set metadata
+            # Set metadata first
             asset.set_text_metadata(
                 font="Arial",
                 size=48,
                 color="#FFFFFF",
-                position="bottom_center",
-                background_color="#000000AA",
-                text=scene["text"]
+                x=100,  # Position x coordinate
+                y=900,  # Position y coordinate (bottom area for 1080p)
+                text_content=scene["text"]
             )
 
-            # Create text overlay data file
-            self._create_text_overlay_data(Path(asset.file_path), asset.metadata)
+            # Create text overlay data file FIRST
+            self._create_text_overlay_data(file_path, asset.asset_metadata or {})
+
+            # Now set the paths after file exists
+            asset.file_path = str(file_path)
+            asset.url_path = f"/media/assets/temp/{filename}"
 
             db.add(asset)
             return asset
@@ -286,23 +303,25 @@ class MediaAssetGenerator:
 
             # Generate file path
             filename = f"narration_{asset.id}.mp3"
-            asset.file_path = str(self.storage_manager.get_asset_path("audio") / filename)
-            asset.url_path = f"/media/assets/audio/{filename}"
+            file_path = Path(self.storage_manager.get_asset_path("audio") / filename)
 
-            # Set metadata
+            # Set metadata first
             asset.set_audio_metadata(
                 sample_rate=44100,
                 channels=1,  # Mono for narration
-                codec="mp3",
-                content_type="narration"
+                codec="mp3"
             )
 
-            # Create placeholder audio file
+            # Create placeholder audio file FIRST
             self._create_placeholder_audio(
-                Path(asset.file_path),
+                file_path,
                 duration,
                 "narration"
             )
+
+            # Now set paths after file exists
+            asset.file_path = str(file_path)
+            asset.url_path = f"/media/assets/audio/{filename}"
 
             db.add(asset)
             return asset
@@ -332,23 +351,25 @@ class MediaAssetGenerator:
 
             # Generate file path
             filename = f"music_{asset.id}.mp3"
-            asset.file_path = str(self.storage_manager.get_asset_path("audio") / filename)
-            asset.url_path = f"/media/assets/audio/{filename}"
+            file_path = Path(self.storage_manager.get_asset_path("audio") / filename)
 
-            # Set metadata
+            # Set metadata first
             asset.set_audio_metadata(
                 sample_rate=44100,
                 channels=2,  # Stereo for music
-                codec="mp3",
-                content_type="background_music"
+                codec="mp3"
             )
 
-            # Create placeholder music file
+            # Create placeholder music file FIRST
             self._create_placeholder_audio(
-                Path(asset.file_path),
+                file_path,
                 duration,
-                "music"
+                "background_music"
             )
+
+            # Now set paths after file exists
+            asset.file_path = str(file_path)
+            asset.url_path = f"/media/assets/audio/{filename}"
 
             db.add(asset)
             return asset
@@ -428,13 +449,32 @@ class MediaAssetGenerator:
             logger.error(f"Failed to create placeholder image: {e}")
             raise
 
+    def _serialize_for_json(self, obj: Any) -> Any:
+        """Convert objects to JSON-serializable format."""
+        if hasattr(obj, '__dict__'):
+            # Convert objects with __dict__ to dictionary
+            return {k: self._serialize_for_json(v) for k, v in obj.__dict__.items()
+                    if not k.startswith('_')}
+        elif isinstance(obj, dict):
+            return {k: self._serialize_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._serialize_for_json(item) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        else:
+            # Convert any other object to string
+            return str(obj)
+
     def _create_text_overlay_data(self, file_path: Path, metadata: Dict[str, Any]):
         """Create text overlay configuration file."""
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
+            # Serialize metadata to handle non-JSON-serializable objects
+            serializable_metadata = self._serialize_for_json(metadata)
+
             with open(file_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(serializable_metadata, f, indent=2)
 
         except Exception as e:
             logger.error(f"Failed to create text overlay data: {e}")

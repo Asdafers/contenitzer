@@ -16,6 +16,7 @@ from ..services.task_queue_service import (
     TaskType,
     TaskPriority
 )
+from ..lib.database import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -319,10 +320,27 @@ async def submit_task(
             )
         elif task_type_enum == TaskType.VIDEO_COMPOSITION:
             # Handle video composition task
+            # Extract job_id from input data, or find the most recent job for this session
+            job_id = request.input_data.get("job_id", "")
+
+            # If no job_id provided, find the most recent video generation job for this session
+            if not job_id:
+                with get_db_session() as db:
+                    from ..models.video_generation_job import VideoGenerationJob
+                    recent_job = db.query(VideoGenerationJob).filter(
+                        VideoGenerationJob.session_id == request.session_id
+                    ).order_by(VideoGenerationJob.created_at.desc()).first()
+
+                    if recent_job:
+                        job_id = str(recent_job.id)
+                    else:
+                        logger.error(f"No video generation job found for session {request.session_id}")
+                        job_id = ""
+
             compose_video.apply_async(
                 args=[
                     request.session_id,
-                    request.input_data.get("media_assets", {}),
+                    str(job_id),  # Ensure job_id is a string
                     request.input_data.get("composition_options", {})
                 ],
                 task_id=task_id

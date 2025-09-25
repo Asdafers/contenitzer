@@ -115,7 +115,7 @@ async def generate_video(
         _validate_generation_options(options)
 
         # Create generation job
-        job = video_service.create_generation_job(
+        job_id = video_service.create_generation_job(
             script_id=script_uuid,
             session_id=request.session_id,
             options=options
@@ -124,7 +124,7 @@ async def generate_video(
         # Trigger background workflow
         background_tasks.add_task(
             _execute_video_generation_workflow,
-            str(job.id),
+            str(job_id),
             request.script_id,
             request.session_id,
             options
@@ -132,14 +132,14 @@ async def generate_video(
 
         # Return job information
         return VideoGenerationResponse(
-            id=str(job.id),
-            session_id=job.session_id,
-            script_id=str(job.script_id),
-            status=job.status.value,
-            progress_percentage=job.progress_percentage,
-            started_at=job.started_at.isoformat(),
-            completed_at=job.completed_at.isoformat() if job.completed_at else None,
-            error_message=job.error_message
+            id=str(job_id),
+            session_id=request.session_id,
+            script_id=request.script_id,
+            status="PENDING",
+            progress_percentage=0,
+            started_at=datetime.now().isoformat(),
+            completed_at=None,
+            error_message=None
         )
 
     except ValueError as e:
@@ -284,7 +284,7 @@ async def _execute_video_generation_workflow(
         # Step 2: Compose video
         video_result = compose_video.delay(
             session_id=session_id,
-            job_id=job_id,
+            job_id=str(job_id),
             composition_options=options
         )
 

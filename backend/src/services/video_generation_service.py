@@ -6,7 +6,8 @@ import logging
 import uuid
 import json
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 
 from ..models.video_generation_job import VideoGenerationJob, JobStatusEnum as JobStatus
 from ..models.generated_video import GeneratedVideo
@@ -84,7 +85,7 @@ class VideoGenerationService:
                     raise VideoGenerationServiceError(f"Job {job_id} not found")
 
                 # Phase 1: Generate media assets with graceful degradation
-                job.update_status(JobStatus.MEDIA_GENERATION, 20)
+                job.update_progress(20, JobStatus.MEDIA_GENERATION)
                 db.commit()
 
                 assets = self._generate_assets_with_fallback(
@@ -92,7 +93,7 @@ class VideoGenerationService:
                 )
 
                 # Phase 2: Compose final video
-                job.update_status(JobStatus.VIDEO_COMPOSITION, 60)
+                job.update_progress(60, JobStatus.VIDEO_COMPOSITION)
                 db.commit()
 
                 video = self._compose_video_with_fallback(
@@ -100,7 +101,7 @@ class VideoGenerationService:
                 )
 
                 # Phase 3: Complete job
-                job.update_status(JobStatus.COMPLETED, 100)
+                job.update_progress(100, JobStatus.COMPLETED)
                 job.completed_at = datetime.now()
                 db.add(video)
                 db.commit()
@@ -128,7 +129,7 @@ class VideoGenerationService:
                 if job.status in [JobStatus.COMPLETED, JobStatus.FAILED]:
                     return False
 
-                job.update_status(JobStatus.FAILED, job.progress_percentage)
+                job.transition_status(JobStatus.FAILED, "Job cancelled by user")
                 job.error_message = "Job cancelled by user"
                 job.completed_at = datetime.now()
                 db.commit()
@@ -176,7 +177,7 @@ class VideoGenerationService:
                 ).first()
 
                 if job:
-                    job.update_status(JobStatus.FAILED, job.progress_percentage)
+                    job.transition_status(JobStatus.FAILED, error_message)
                     job.error_message = error_message
                     job.completed_at = datetime.now()
                     db.commit()
