@@ -1,3 +1,0 @@
-PLACEHOLDER AUDIO
-Duration: 180s
-Type: background_music

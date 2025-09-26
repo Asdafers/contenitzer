@@ -127,8 +127,30 @@ pids
 # Storage directories
 /tmp
 /temp
-/media
 /storage
+
+# Generated media files (backend)
+backend/media/
+backend/media/**
+*.mp4
+*.mp3
+*.wav
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.mov
+*.avi
+*.webm
+
+# Frontend build and cache
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/.nuxt/
+frontend/.cache/
+frontend/.parcel-cache/
 
 # API keys and secrets
 .env
@@ -154,3 +176,37 @@ temp/
 
 # System files
 *.orig
+
+# Celery files
+celerybeat-schedule
+celerybeat.pid
+**/celerybeat-schedule*
+
+# Python cache files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# uv files
+.uv-cache/
+
+# VS Code settings (if not wanted in repo)
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Large data files
+*.csv
+*.json.gz
+*.zip
+*.tar.gz
+*.sql
