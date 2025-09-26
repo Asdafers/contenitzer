@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from src.api import trending, scripts, media, videos, sessions, tasks, websocket, setup, script_upload, workflow, health
 from src.api import video_generation, video_serving, job_management, media_assets

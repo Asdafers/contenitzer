@@ -6,7 +6,7 @@ from celery import Celery
 from src.lib.database import DatabaseManager
 
 # Redis connection configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
 
 # Create Celery instance
 celery_app = Celery(

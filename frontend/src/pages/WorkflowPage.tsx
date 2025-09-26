@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useWebSocket } from '../services/websocket';
+import { getWebSocketManager } from '../services/websocket';
 import { WorkflowModeSelector } from '../components/Workflow/WorkflowModeSelector';
 import { ScriptUploadComponent } from '../components/ScriptUpload/ScriptUploadComponent';
 import { ScriptValidationStatus } from '../components/ScriptUpload/ScriptValidationStatus';
 import { scriptUploadService } from '../services/scriptUploadService';
 import { useScriptUpload, useWorkflow } from '../hooks/useScriptUpload';
+import { useModelSelection } from '../hooks/useModelSelection';
+import { ModelSelector } from '../components/ModelSelector';
+import { useModelHealth } from '../hooks/useModelHealth';
+import { GeminiModel } from '../types/gemini';
 
 interface WorkflowStep {
   id: string;
@@ -31,7 +35,7 @@ export default function WorkflowPage() {
     { id: 'upload', name: 'YouTube Upload', completed: false, inProgress: false },
   ]);
 
-  const { connect, disconnect, getConnectionState, on } = useWebSocket(sessionId || undefined);
+  // Use a more stable WebSocket reference approach
   const [messages, setMessages] = useState<any[]>([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
@@ -59,6 +63,12 @@ export default function WorkflowPage() {
     console.error('Script upload error:', error);
   }, []);
 
+  // Model selection hook
+  const { selectedModel, allowFallback, setSelectedModel, setAllowFallback } = useModelSelection();
+
+  // Model health monitoring
+  const { healthData } = useModelHealth(true, 30000);
+
   // Temporarily disable complex hooks to isolate the issue
   // const { workflowState, createWorkflow, setWorkflowMode: setMode } = useWorkflow();
   // const { uploadState, uploadScript } = useScriptUpload({
@@ -70,15 +80,39 @@ export default function WorkflowPage() {
     createSession();
   }, []); // Empty dependency array to run only once
 
+  // Connect WebSocket when sessionId is available
+  useEffect(() => {
+    if (sessionId) {
+      console.log(`[WorkflowPage] Attempting WebSocket connection for session: ${sessionId}`);
+      const wsManager = getWebSocketManager(sessionId);
+      wsManager.connect()
+        .then(() => {
+          console.log('[WorkflowPage] WebSocket connected successfully');
+        })
+        .catch((error) => {
+          console.error('[WorkflowPage] WebSocket connection failed:', error);
+        });
+    }
+  }, [sessionId]);
+
   useEffect(() => {
     // Update connection status
-    const updateStatus = () => setConnectionStatus(getConnectionState());
+    const updateStatus = () => {
+      if (sessionId) {
+        const wsManager = getWebSocketManager(sessionId);
+        const newStatus = wsManager.getConnectionState();
+        console.log(`[WorkflowPage] Updating connection status: ${connectionStatus} -> ${newStatus}`);
+        setConnectionStatus(newStatus);
+      } else {
+        setConnectionStatus('disconnected');
+      }
+    };
     updateStatus();
 
     // Update status every 2 seconds
     const interval = setInterval(updateStatus, 2000);
     return () => clearInterval(interval);
-  }, []); // Empty dependency array to prevent infinite loop
+  }, [sessionId, connectionStatus]); // Include sessionId to get the right manager
 
   // Video composition function - defined first to avoid hoisting issues
   const startVideoComposition = useCallback(async () => {
@@ -367,13 +401,14 @@ export default function WorkflowPage() {
 
       // Connect to WebSocket now that workflow is starting
       console.log('Connecting to WebSocket for workflow execution');
-      await connect().catch(error => {
+      const wsManager = getWebSocketManager(sessionId);
+      await wsManager.connect().catch(error => {
         console.error('Failed to connect to WebSocket:', error);
         // Continue workflow even if WebSocket fails
       });
 
       // Set up progress event listener now that we're connected
-      const unsubscribeProgress = on('progressUpdate', handleProgressUpdate);
+      const unsubscribeProgress = wsManager.on('progressUpdate', handleProgressUpdate);
 
       if (workflowMode === 'GENERATE') {
         // Start trending analysis (first step for generation workflow)
@@ -404,7 +439,10 @@ export default function WorkflowPage() {
           throw new Error('No uploaded script ID available for media generation');
         }
 
-        // Start media generation task
+        // Start media generation task with selected Gemini model
+        console.log('🤖 Starting media generation with model:', selectedModel, 'fallback:', allowFallback);
+        console.log('🤖 About to make media generation API call...');
+
         const response = await fetch('/api/tasks/submit/media_generation', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -412,6 +450,8 @@ export default function WorkflowPage() {
             session_id: sessionId,
             input_data: {
               script_id: uploadedScriptId,
+              model: selectedModel,
+              allow_fallback: allowFallback,
               media_options: {
                 resolution: '1920x1080',
                 style: 'modern',
@@ -422,19 +462,28 @@ export default function WorkflowPage() {
           })
         });
 
-        if (response.ok) {
-          setSteps(prev => prev.map(step =>
-            step.id === 'media'
-              ? { ...step, inProgress: true, progress: 0 }
-              : step
-          ));
+        console.log('🤖 Media generation API response:', response.status, response.statusText);
+
+        if (!response.ok) {
+          const responseText = await response.text();
+          console.error('🤖 Media generation API failed:', response.status, responseText);
+          throw new Error(`Failed to start media generation: ${response.status} - ${responseText}`);
         }
+
+        const responseData = await response.json();
+        console.log('🤖 Media generation task submitted successfully:', responseData);
+
+        setSteps(prev => prev.map(step =>
+          step.id === 'media'
+            ? { ...step, inProgress: true, progress: 0 }
+            : step
+        ));
       }
     } catch (error) {
       console.error('Failed to start workflow:', error);
       setIsWorkflowRunning(false);
     }
-  }, [sessionId, workflowMode, isWorkflowRunning, uploadedScriptId]);
+  }, [sessionId, workflowMode, isWorkflowRunning, uploadedScriptId, selectedModel, allowFallback, handleProgressUpdate]);
 
   return (
     <div className="min-h-screen bg-secondary-50 py-8">
@@ -463,6 +512,26 @@ export default function WorkflowPage() {
                 {workflowState.error}
               </div>
             )} */}
+          </div>
+        )}
+
+        {/* Gemini Model Selection */}
+        {workflowMode && (
+          <div className="card mb-8">
+            <h2 className="text-2xl font-semibold text-secondary-900 mb-6">
+              AI Model Configuration
+            </h2>
+            {healthData && (
+              <ModelSelector
+                selectedModel={selectedModel}
+                availableModels={['gemini-2.5-flash', 'gemini-2.5-pro'] as GeminiModel[]}
+                modelHealth={healthData.models}
+                allowFallback={allowFallback}
+                onModelChange={setSelectedModel}
+                onFallbackChange={setAllowFallback}
+                disabled={false}
+              />
+            )}
           </div>
         )}
 

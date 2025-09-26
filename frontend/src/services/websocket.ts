@@ -104,9 +104,11 @@ class WebSocketManager extends EventEmitter {
       try {
         console.log(`[WebSocket] Connecting to ${this.url}...`);
         this.ws = new WebSocket(this.url);
+        console.log(`[WebSocket] WebSocket instance created:`, !!this.ws);
 
         this.ws.onopen = () => {
           console.log('[WebSocket] Connected successfully');
+          console.log(`[WebSocket] WebSocket instance after onopen:`, !!this.ws, 'readyState:', this.ws?.readyState);
           clearTimeout(connectionTimeout);
           this.isConnecting = false;
           this.reconnectAttempts = 0;
@@ -258,15 +260,23 @@ class WebSocketManager extends EventEmitter {
   }
 
   getConnectionState(): string {
-    if (!this.ws) return 'disconnected';
-
-    switch (this.ws.readyState) {
-      case WebSocket.CONNECTING: return 'connecting';
-      case WebSocket.OPEN: return 'connected';
-      case WebSocket.CLOSING: return 'closing';
-      case WebSocket.CLOSED: return 'disconnected';
-      default: return 'unknown';
+    if (!this.ws) {
+      console.log('[WebSocket] getConnectionState: no websocket instance');
+      return 'disconnected';
     }
+
+    const state = (() => {
+      switch (this.ws.readyState) {
+        case WebSocket.CONNECTING: return 'connecting';
+        case WebSocket.OPEN: return 'connected';
+        case WebSocket.CLOSING: return 'closing';
+        case WebSocket.CLOSED: return 'disconnected';
+        default: return 'unknown';
+      }
+    })();
+
+    console.log(`[WebSocket] getConnectionState: ${state} (readyState: ${this.ws.readyState})`);
+    return state;
   }
 
   isConnected(): boolean {
@@ -280,7 +290,10 @@ const wsManagers: { [sessionId: string]: WebSocketManager } = {};
 // Get or create WebSocket manager for a session
 export const getWebSocketManager = (sessionId: string): WebSocketManager => {
   if (!wsManagers[sessionId]) {
+    console.log(`[WebSocket] Creating new WebSocket manager for session: ${sessionId}`);
     wsManagers[sessionId] = new WebSocketManager(undefined, sessionId);
+  } else {
+    console.log(`[WebSocket] Reusing existing WebSocket manager for session: ${sessionId}`);
   }
   return wsManagers[sessionId];
 };
@@ -291,6 +304,7 @@ export const wsManager = new WebSocketManager();
 // React hook for using WebSocket in components
 export const useWebSocket = (sessionId?: string) => {
   const manager = sessionId ? getWebSocketManager(sessionId) : wsManager;
+  console.log(`[useWebSocket] Using manager for session: ${sessionId || 'default'}`);
 
   return {
     connect: () => manager.connect(),
