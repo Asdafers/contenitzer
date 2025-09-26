@@ -3,7 +3,11 @@ Celery worker configuration for background task processing.
 """
 import os
 from celery import Celery
+from dotenv import load_dotenv
 from src.lib.database import DatabaseManager
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Redis connection configuration
 REDIS_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")

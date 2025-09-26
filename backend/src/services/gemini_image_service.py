@@ -190,9 +190,13 @@ class GeminiImageService:
         import os
         api_key = os.getenv('GEMINI_API_KEY', 'test-key')
 
-        # Check if we're using a test/demo API key for mock mode
-        if api_key in ['test-key', 'demo-key', 'mock-key']:
-            return self._generate_mock_image(generation_request)
+        # Require a valid API key - no more mock fallbacks
+        if api_key in ['test-key', 'demo-key', 'mock-key'] or not api_key or api_key.strip() == '':
+            raise ImageGenerationError(
+                "Google AI API key is required for image generation. Please set GEMINI_API_KEY environment variable.",
+                generation_prompt=generation_request.get("prompt", ""),
+                model_response="Missing or invalid API key"
+            )
 
         try:
             # Use Google GenAI SDK for Imagen
@@ -252,9 +256,13 @@ class GeminiImageService:
                     model_response="Empty image generation response"
                 )
 
-        except ImportError:
-            logger.warning("Google GenAI SDK not available, falling back to mock mode")
-            return self._generate_mock_image(generation_request)
+        except ImportError as e:
+            logger.error(f"Google GenAI SDK not available: {e}")
+            raise ImageGenerationError(
+                "Google GenAI SDK is required but not available. Please install google-genai package.",
+                generation_prompt=generation_request.get("prompt", ""),
+                model_response=f"ImportError: {e}"
+            )
         except Exception as e:
             logger.error(f"Imagen API error: {e}")
             # Convert generic errors to specific Gemini errors
@@ -265,10 +273,19 @@ class GeminiImageService:
                     "Content filtered by Imagen safety policy",
                     filtered_content=generation_request.get("prompt", "")
                 )
+            elif "unauthorized" in str(e).lower() or "invalid" in str(e).lower() and "key" in str(e).lower():
+                raise ImageGenerationError(
+                    f"Invalid Google AI API key. Please check your GEMINI_API_KEY: {e}",
+                    generation_prompt=generation_request.get("prompt", ""),
+                    model_response=str(e)
+                )
             else:
-                # Fallback to mock for now
-                logger.warning(f"Imagen generation failed, using mock: {e}")
-                return self._generate_mock_image(generation_request)
+                # Re-raise as ImageGenerationError instead of falling back to mock
+                raise ImageGenerationError(
+                    f"Google Imagen API error: {e}",
+                    generation_prompt=generation_request.get("prompt", ""),
+                    model_response=str(e)
+                )
 
     def _generate_mock_image(self, generation_request: Dict[str, Any]) -> Dict[str, Any]:
         """Generate mock image for testing when Imagen is not available."""
