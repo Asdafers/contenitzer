@@ -36,6 +36,18 @@ class ProgressEventType(str, Enum):
     VIDEO_COMPOSITION_COMPLETED = "video_composition_completed"
     VIDEO_FILE_READY = "video_file_ready"
 
+    # AI processing specific events
+    AI_SCRIPT_ANALYSIS_STARTED = "ai_script_analysis_started"
+    AI_SCRIPT_ANALYSIS_PROGRESS = "ai_script_analysis_progress"
+    AI_SCRIPT_ANALYSIS_COMPLETED = "ai_script_analysis_completed"
+    AI_IMAGE_GENERATION_STARTED = "ai_image_generation_started"
+    AI_IMAGE_GENERATION_PROGRESS = "ai_image_generation_progress"
+    AI_IMAGE_GENERATION_COMPLETED = "ai_image_generation_completed"
+    AI_AUDIO_GENERATION_STARTED = "ai_audio_generation_started"
+    AI_AUDIO_GENERATION_PROGRESS = "ai_audio_generation_progress"
+    AI_AUDIO_GENERATION_COMPLETED = "ai_audio_generation_completed"
+    AI_PROCESSING_ERROR = "ai_processing_error"
+
 class ProgressServiceError(Exception):
     """Custom exception for progress service operations"""
     pass

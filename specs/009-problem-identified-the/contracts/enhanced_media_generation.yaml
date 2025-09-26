@@ -1,0 +1,214 @@
+openapi: 3.0.0
+info:
+  title: Enhanced Media Generation API
+  description: API contracts for real AI-powered media generation
+  version: 1.0.0
+
+paths:
+  /api/tasks/submit/media_generation:
+    post:
+      summary: Submit enhanced media generation task with AI model selection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_id
+                - input_data
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                  description: User session ID for progress tracking
+                input_data:
+                  type: object
+                  required:
+                    - script_id
+                    - model
+                  properties:
+                    script_id:
+                      type: string
+                      format: uuid
+                      description: Reference to script content
+                    model:
+                      type: string
+                      enum: ["gemini-2.5-flash"]
+                      description: AI model to use for generation
+                    allow_fallback:
+                      type: boolean
+                      enum: [false]
+                      description: Must be false - no fallback behavior allowed
+                    media_options:
+                      type: object
+                      properties:
+                        duration:
+                          type: integer
+                          minimum: 1
+                          maximum: 3600
+                          description: Video duration in seconds
+                        resolution:
+                          type: string
+                          enum: ["1920x1080", "1280x720", "3840x2160"]
+                          description: Video resolution
+                        quality:
+                          type: string
+                          enum: ["high", "medium", "low"]
+                          description: Generation quality setting
+                        include_audio:
+                          type: boolean
+                          description: Whether to generate audio assets
+                priority:
+                  type: string
+                  enum: ["high", "normal", "low"]
+                  default: "normal"
+                metadata:
+                  type: object
+                  description: Additional task metadata
+      responses:
+        '201':
+          description: Media generation task submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                    format: uuid
+                    description: Task ID for tracking
+                  message:
+                    type: string
+                    example: "Task submitted successfully"
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    description: Detailed error message for debugging
+        '500':
+          description: Internal server error with detailed debugging info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    description: Detailed error message for debugging
+                  error_context:
+                    type: object
+                    description: Additional error context for debugging
+
+components:
+  schemas:
+    ProgressEvent:
+      type: object
+      required:
+        - session_id
+        - event_type
+        - message
+        - percentage
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          enum:
+            - "TASK_STARTED"
+            - "TASK_PROGRESS"
+            - "TASK_COMPLETED"
+            - "TASK_FAILED"
+            - "AI_SCRIPT_ANALYSIS_STARTED"
+            - "AI_PROMPT_GENERATION_STARTED"
+            - "AI_IMAGE_GENERATION_STARTED"
+            - "AI_PROCESSING_ERROR"
+            - "AI_PROCESSING_STAGE_COMPLETED"
+        message:
+          type: string
+          description: Human-readable progress message
+        percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Completion percentage based on actual processing
+        task_id:
+          type: string
+          format: uuid
+        ai_processing_stage:
+          type: string
+          description: Detailed AI processing stage information
+        estimated_time_remaining:
+          type: integer
+          description: Estimated seconds remaining based on actual processing
+        model_response_details:
+          type: object
+          description: Model-specific response information for debugging
+        error_context:
+          type: object
+          description: Detailed error context when failures occur
+        processing_metrics:
+          type: object
+          properties:
+            token_usage:
+              type: integer
+              description: Total tokens used
+            request_count:
+              type: integer
+              description: Number of API requests made
+            processing_time:
+              type: number
+              description: Processing time in seconds
+
+    GeneratedAsset:
+      type: object
+      required:
+        - id
+        - asset_type
+        - file_path
+        - url_path
+        - generation_method
+        - ai_model_used
+      properties:
+        id:
+          type: string
+          format: uuid
+        asset_type:
+          type: string
+          enum: ["IMAGE", "AUDIO", "VIDEO_CLIP", "TEXT_OVERLAY"]
+        file_path:
+          type: string
+          description: Full file system path
+        url_path:
+          type: string
+          description: URL path for client access
+        duration:
+          type: integer
+          description: Duration in seconds for time-based assets
+        generation_method:
+          type: string
+          enum: ["GEMINI_AI"]
+          description: Method used for generation
+        ai_model_used:
+          type: string
+          description: Specific AI model version used
+        generation_prompt:
+          type: string
+          description: Prompt sent to AI model for reproducibility
+        ai_model_response_time:
+          type: number
+          description: AI processing time in seconds
+        ai_confidence_score:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          description: AI confidence score if provided
+        generation_metadata:
+          type: object
+          description: Additional AI-specific metadata

@@ -102,13 +102,13 @@ class WebSocketManager extends EventEmitter {
       }, 5000); // 5 second timeout
 
       try {
-        console.log(`[WebSocket] Connecting to ${this.url}...`);
+        // console.log(`[WebSocket] Connecting to ${this.url}...`);
         this.ws = new WebSocket(this.url);
-        console.log(`[WebSocket] WebSocket instance created:`, !!this.ws);
+        // console.log(`[WebSocket] WebSocket instance created:`, !!this.ws);
 
         this.ws.onopen = () => {
-          console.log('[WebSocket] Connected successfully');
-          console.log(`[WebSocket] WebSocket instance after onopen:`, !!this.ws, 'readyState:', this.ws?.readyState);
+          // console.log('[WebSocket] Connected successfully');
+          // console.log(`[WebSocket] WebSocket instance after onopen:`, !!this.ws, 'readyState:', this.ws?.readyState);
           clearTimeout(connectionTimeout);
           this.isConnecting = false;
           this.reconnectAttempts = 0;
@@ -118,7 +118,7 @@ class WebSocketManager extends EventEmitter {
         };
 
         this.ws.onclose = (event) => {
-          console.log(`[WebSocket] Connection closed: ${event.code} ${event.reason}`);
+          // console.log(`[WebSocket] Connection closed: ${event.code} ${event.reason}`);
           clearTimeout(connectionTimeout);
           this.isConnecting = false;
           this.stopPing();
@@ -165,7 +165,7 @@ class WebSocketManager extends EventEmitter {
   }
 
   private handleProgressMessage(data: any): void {
-    console.log(`[WebSocket] Received progress event:`, data);
+    // console.log(`[WebSocket] Received progress event:`, data);
 
     // Backend sends progress events with this format:
     // { event_type, task_id, message, progress, timestamp, data }
@@ -217,7 +217,7 @@ class WebSocketManager extends EventEmitter {
     this.reconnectAttempts++;
     const delay = this.reconnectInterval * Math.pow(1.5, this.reconnectAttempts - 1);
 
-    console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    // console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
     setTimeout(() => {
       this.connect().catch((error) => {
@@ -261,7 +261,7 @@ class WebSocketManager extends EventEmitter {
 
   getConnectionState(): string {
     if (!this.ws) {
-      console.log('[WebSocket] getConnectionState: no websocket instance');
+      // console.log('[WebSocket] getConnectionState: no websocket instance');
       return 'disconnected';
     }
 
@@ -275,7 +275,7 @@ class WebSocketManager extends EventEmitter {
       }
     })();
 
-    console.log(`[WebSocket] getConnectionState: ${state} (readyState: ${this.ws.readyState})`);
+    // console.log(`[WebSocket] getConnectionState: ${state} (readyState: ${this.ws.readyState})`);
     return state;
   }
 
@@ -290,10 +290,10 @@ const wsManagers: { [sessionId: string]: WebSocketManager } = {};
 // Get or create WebSocket manager for a session
 export const getWebSocketManager = (sessionId: string): WebSocketManager => {
   if (!wsManagers[sessionId]) {
-    console.log(`[WebSocket] Creating new WebSocket manager for session: ${sessionId}`);
+    // console.log(`[WebSocket] Creating new WebSocket manager for session: ${sessionId}`);
     wsManagers[sessionId] = new WebSocketManager(undefined, sessionId);
   } else {
-    console.log(`[WebSocket] Reusing existing WebSocket manager for session: ${sessionId}`);
+    // console.log(`[WebSocket] Reusing existing WebSocket manager for session: ${sessionId}`);
   }
   return wsManagers[sessionId];
 };
@@ -304,7 +304,7 @@ export const wsManager = new WebSocketManager();
 // React hook for using WebSocket in components
 export const useWebSocket = (sessionId?: string) => {
   const manager = sessionId ? getWebSocketManager(sessionId) : wsManager;
-  console.log(`[useWebSocket] Using manager for session: ${sessionId || 'default'}`);
+  // console.log(`[useWebSocket] Using manager for session: ${sessionId || 'default'}`);
 
   return {
     connect: () => manager.connect(),

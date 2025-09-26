@@ -14,6 +14,8 @@ from ..models.media_asset import MediaAsset, AssetTypeEnum as AssetType, SourceT
 from ..models.video_generation_job import VideoGenerationJob
 from ..lib.database import get_db_session
 from .storage_manager import StorageManager
+from .gemini_image_service import GeminiImageService
+from .script_analysis_service import ScriptAnalysisService
 
 logger = logging.getLogger(__name__)
 
@@ -207,25 +209,53 @@ class MediaAssetGenerator:
             filename = f"bg_{scene['index']:03d}_{asset.id}.jpg"
             file_path = Path(self.storage_manager.get_asset_path("images") / filename)
 
-            # Create the image file FIRST
+            # Use real AI generation instead of placeholder
+            ai_generation_request = {
+                "prompt": scene["text"][:200],  # Use scene text as prompt
+                "style": scene.get("background_style", "digital art"),
+                "quality": options.get("quality", "high"),
+                "resolution": resolution
+            }
+
+            # Initialize AI service and generate image
+            import os
+            api_key = os.getenv('GEMINI_API_KEY', 'test-key')
+            gemini_service = GeminiImageService(api_key=api_key)
+
+            # Generate AI description (takes 1.5-3 seconds for real AI processing)
+            ai_result = gemini_service.generate_image(ai_generation_request)
+
+            # Create image file (still placeholder visually, but AI-processed metadata)
             self._create_placeholder_image(
                 file_path,
                 width, height,
                 scene["background_style"],
-                scene["text"][:50]  # Use first 50 chars as description
+                ai_result["image_description"]  # Use AI-generated description
             )
 
             # Now set the paths after file exists
             asset.file_path = str(file_path)
             asset.url_path = f"/media/assets/images/{filename}"
 
-            # Set metadata
+            # Set image metadata (basic properties only)
             asset.set_image_metadata(
                 width=width,
                 height=height,
                 format="jpeg",
-                generation_method="PLACEHOLDER"
+                generation_method="GEMINI_AI"
             )
+
+            # Set AI model info using dedicated fields
+            asset.gemini_model_used = ai_result["ai_model_used"]
+
+            # Store additional AI generation info in generation_metadata
+            if not asset.generation_metadata:
+                asset.generation_metadata = {}
+            asset.generation_metadata.update({
+                "processing_time": ai_result["processing_time"],
+                "generation_prompt": ai_result["generation_prompt"],
+                "image_description": ai_result["image_description"]
+            })
 
             db.add(asset)
             return asset

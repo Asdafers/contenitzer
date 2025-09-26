@@ -1,0 +1,34 @@
+{
+  "name": "contentizer",
+  "version": "1.0.0",
+  "description": "**An intelligent platform for automated YouTube content creation using AI**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "mkdir -p logs && concurrently --names \"BACKEND,FRONTEND,CELERY\" --colors \"blue,green,yellow\" \"npm run backend\" \"npm run frontend\" \"npm run celery\"",
+    "dev-logged": "mkdir -p logs && concurrently --names \"BACKEND,FRONTEND,CELERY\" --colors \"blue,green,yellow\" \"npm run backend 2>&1 | tee logs/backend.log\" \"npm run frontend 2>&1 | tee logs/frontend.log\" \"npm run celery 2>&1 | tee logs/celery.log\"",
+    "backend": "cd backend && uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
+    "frontend": "cd frontend && npm run dev",
+    "celery": "cd backend && uv run celery -A celery_worker worker --loglevel=info --logfile=../logs/celery-worker.log",
+    "logs": "echo '=== BACKEND ===' && tail -n 20 logs/backend.log 2>/dev/null || echo 'No backend logs yet'; echo '=== FRONTEND ===' && tail -n 20 logs/frontend.log 2>/dev/null || echo 'No frontend logs yet'; echo '=== CELERY ===' && tail -n 20 logs/celery.log 2>/dev/null || echo 'No celery logs yet'",
+    "logs-follow": "tail -f logs/*.log"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Asdafers/contenitzer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Asdafers/contenitzer/issues"
+  },
+  "homepage": "https://github.com/Asdafers/contenitzer#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

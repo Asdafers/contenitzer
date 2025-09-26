@@ -29,6 +29,13 @@ class SourceTypeEnum(enum.Enum):
     USER_UPLOADED = "USER_UPLOADED"
 
 
+class GenerationMethodEnum(enum.Enum):
+    """Method used for AI-powered generation."""
+    GEMINI_AI = "GEMINI_AI"
+    PLACEHOLDER = "PLACEHOLDER"
+    MANUAL = "MANUAL"
+
+
 class GenerationStatusEnum(enum.Enum):
     """Status of media asset generation process."""
     pending = "pending"

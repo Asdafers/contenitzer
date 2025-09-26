@@ -9,6 +9,7 @@ import { useModelSelection } from '../hooks/useModelSelection';
 import { ModelSelector } from '../components/ModelSelector';
 import { useModelHealth } from '../hooks/useModelHealth';
 import { GeminiModel } from '../types/gemini';
+import { ContentPlanningPreview } from '../components/ContentPlanning/ContentPlanningPreview';
 
 interface WorkflowStep {
   id: string;
@@ -26,10 +27,14 @@ export default function WorkflowPage() {
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [uploadedScriptId, setUploadedScriptId] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<'PENDING' | 'VALID' | 'INVALID'>('PENDING');
+  const [contentPlan, setContentPlan] = useState<any>(null);
+  const [showContentPlanPreview, setShowContentPlanPreview] = useState(false);
+  const [isProcessingPlanApproval, setIsProcessingPlanApproval] = useState(false);
 
   const [steps, setSteps] = useState<WorkflowStep[]>([
     { id: 'trending', name: 'Trending Analysis', completed: false, inProgress: false },
     { id: 'script', name: 'Script Generation', completed: false, inProgress: false },
+    { id: 'planning', name: 'Content Planning', completed: false, inProgress: false },
     { id: 'media', name: 'Media Generation', completed: false, inProgress: false },
     { id: 'compose', name: 'Video Composition', completed: false, inProgress: false },
     { id: 'upload', name: 'YouTube Upload', completed: false, inProgress: false },
@@ -83,11 +88,11 @@ export default function WorkflowPage() {
   // Connect WebSocket when sessionId is available
   useEffect(() => {
     if (sessionId) {
-      console.log(`[WorkflowPage] Attempting WebSocket connection for session: ${sessionId}`);
+      // console.log(`[WorkflowPage] Attempting WebSocket connection for session: ${sessionId}`);
       const wsManager = getWebSocketManager(sessionId);
       wsManager.connect()
         .then(() => {
-          console.log('[WorkflowPage] WebSocket connected successfully');
+          // console.log('[WorkflowPage] WebSocket connected successfully');
         })
         .catch((error) => {
           console.error('[WorkflowPage] WebSocket connection failed:', error);
@@ -101,7 +106,7 @@ export default function WorkflowPage() {
       if (sessionId) {
         const wsManager = getWebSocketManager(sessionId);
         const newStatus = wsManager.getConnectionState();
-        console.log(`[WorkflowPage] Updating connection status: ${connectionStatus} -> ${newStatus}`);
+        // console.log(`[WorkflowPage] Updating connection status: ${connectionStatus} -> ${newStatus}`);
         setConnectionStatus(newStatus);
       } else {
         setConnectionStatus('disconnected');
@@ -430,60 +435,197 @@ export default function WorkflowPage() {
           ));
         }
       } else if (workflowMode === 'UPLOAD') {
-        // Skip trending analysis, go directly to next step (media generation)
+        // Skip trending analysis, go to content planning first
         console.log('Skipping trending analysis - script already uploaded');
         console.log('Current uploadedScriptId:', uploadedScriptId);
 
         if (!uploadedScriptId) {
           console.error('uploadedScriptId is null/undefined when trying to start workflow');
-          throw new Error('No uploaded script ID available for media generation');
+          throw new Error('No uploaded script ID available for content planning');
         }
 
-        // Start media generation task with selected Gemini model
-        console.log('🤖 Starting media generation with model:', selectedModel, 'fallback:', allowFallback);
-        console.log('🤖 About to make media generation API call...');
+        // Start content planning step first
+        console.log('🧠 Starting content planning for script:', uploadedScriptId);
 
-        const response = await fetch('/api/tasks/submit/media_generation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: sessionId,
-            input_data: {
-              script_id: uploadedScriptId,
-              model: selectedModel,
-              allow_fallback: allowFallback,
-              media_options: {
-                resolution: '1920x1080',
-                style: 'modern',
-                voice: 'professional'
-              }
-            },
-            priority: 'normal'
-          })
-        });
-
-        console.log('🤖 Media generation API response:', response.status, response.statusText);
-
-        if (!response.ok) {
-          const responseText = await response.text();
-          console.error('🤖 Media generation API failed:', response.status, responseText);
-          throw new Error(`Failed to start media generation: ${response.status} - ${responseText}`);
-        }
-
-        const responseData = await response.json();
-        console.log('🤖 Media generation task submitted successfully:', responseData);
-
+        // Mark content planning as in progress
         setSteps(prev => prev.map(step =>
-          step.id === 'media'
+          step.id === 'planning'
             ? { ...step, inProgress: true, progress: 0 }
             : step
         ));
+
+        // Generate content plan using the content planning API
+        const planResponse = await fetch('/api/content-planning/generate-plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            script_id: uploadedScriptId,
+            target_duration: 180,
+            quality_level: 'high',
+            style_preference: 'professional',
+            include_motion: true
+          })
+        });
+
+        if (!planResponse.ok) {
+          const errorText = await planResponse.text();
+          console.error('🧠 Content planning failed:', planResponse.status, errorText);
+          throw new Error(`Content planning failed: ${planResponse.status} - ${errorText}`);
+        }
+
+        const planData = await planResponse.json();
+        console.log('🧠 Content plan generated:', planData);
+
+        // Store the content plan and show preview UI
+        setContentPlan(planData);
+        setShowContentPlanPreview(true);
+
+        // Mark content planning as completed (waiting for approval)
+        setSteps(prev => prev.map(step =>
+          step.id === 'planning'
+            ? { ...step, completed: false, inProgress: false, progress: 100 }
+            : step
+        ));
+
+        // Stop the workflow here - wait for user approval
+        setIsWorkflowRunning(false);
+        return; // Exit workflow - wait for user approval
+
+        // Media generation will be started after user approves the content plan
+        // This code was moved to the approval handler
       }
     } catch (error) {
       console.error('Failed to start workflow:', error);
       setIsWorkflowRunning(false);
     }
   }, [sessionId, workflowMode, isWorkflowRunning, uploadedScriptId, selectedModel, allowFallback, handleProgressUpdate]);
+
+  // Content plan approval handlers
+  const handleContentPlanApproval = useCallback(async (planId: string, modifications?: any) => {
+    if (!sessionId || !contentPlan) return;
+
+    try {
+      setIsProcessingPlanApproval(true);
+      console.log('\ud83d\udcdd Approving content plan:', planId);
+
+      // Call approval API
+      const approvalResponse = await fetch(`/api/content-planning/plans/${planId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: planId,
+          approved: true,
+          user_modifications: modifications
+        })
+      });
+
+      if (!approvalResponse.ok) {
+        const errorText = await approvalResponse.text();
+        console.error('\ud83d\udcdd Plan approval failed:', approvalResponse.status, errorText);
+        throw new Error(`Plan approval failed: ${approvalResponse.status} - ${errorText}`);
+      }
+
+      const approvalData = await approvalResponse.json();
+      console.log('\ud83d\udcdd Plan approved successfully:', approvalData);
+
+      // Hide the preview and mark content planning as completed
+      setShowContentPlanPreview(false);
+      setSteps(prev => prev.map(step =>
+        step.id === 'planning'
+          ? { ...step, completed: true, inProgress: false, progress: 100 }
+          : step
+      ));
+
+      // Now start media generation task with selected Gemini model
+      console.log('\ud83e\udd16 Starting media generation with model:', selectedModel, 'fallback:', allowFallback);
+      setIsWorkflowRunning(true);
+
+      const response = await fetch('/api/tasks/submit/media_generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          input_data: {
+            script_id: uploadedScriptId,
+            model: selectedModel,
+            allow_fallback: allowFallback,
+            content_plan_id: planId, // Include the approved plan
+            media_options: {
+              resolution: '1920x1080',
+              style: 'modern',
+              voice: 'professional'
+            }
+          },
+          priority: 'normal'
+        })
+      });
+
+      console.log('\ud83e\udd16 Media generation API response:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        console.error('\ud83e\udd16 Media generation API failed:', response.status, responseText);
+        throw new Error(`Failed to start media generation: ${response.status} - ${responseText}`);
+      }
+
+      const responseData = await response.json();
+      console.log('\ud83e\udd16 Media generation task submitted successfully:', responseData);
+
+      setSteps(prev => prev.map(step =>
+        step.id === 'media'
+          ? { ...step, inProgress: true, progress: 0 }
+          : step
+      ));
+
+    } catch (error) {
+      console.error('Failed to approve content plan:', error);
+      alert('Failed to approve content plan. Please try again.');
+    } finally {
+      setIsProcessingPlanApproval(false);
+    }
+  }, [sessionId, contentPlan, selectedModel, allowFallback, uploadedScriptId]);
+
+  const handleContentPlanRejection = useCallback(async (planId: string, notes?: string) => {
+    try {
+      setIsProcessingPlanApproval(true);
+      console.log('\ud83d\udeab Rejecting content plan:', planId, 'Notes:', notes);
+
+      // Call rejection API
+      const rejectionResponse = await fetch(`/api/content-planning/plans/${planId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: planId,
+          approved: false,
+          notes: notes
+        })
+      });
+
+      if (!rejectionResponse.ok) {
+        const errorText = await rejectionResponse.text();
+        console.error('\ud83d\udeab Plan rejection failed:', rejectionResponse.status, errorText);
+        throw new Error(`Plan rejection failed: ${rejectionResponse.status} - ${errorText}`);
+      }
+
+      console.log('\ud83d\udeab Plan rejected successfully');
+
+      // Reset the workflow state
+      setShowContentPlanPreview(false);
+      setContentPlan(null);
+      setSteps(prev => prev.map(step =>
+        step.id === 'planning'
+          ? { ...step, name: 'Content Planning (Rejected)', completed: false, inProgress: false, progress: 0 }
+          : step
+      ));
+      setIsWorkflowRunning(false);
+
+    } catch (error) {
+      console.error('Failed to reject content plan:', error);
+      alert('Failed to reject content plan. Please try again.');
+    } finally {
+      setIsProcessingPlanApproval(false);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-secondary-50 py-8">
@@ -565,11 +707,23 @@ export default function WorkflowPage() {
         )}
 
         {/* Script Validation Status */}
-        {workflowMode === 'UPLOAD' && uploadedScriptId && (
+        {workflowMode === 'UPLOAD' && uploadedScriptId && !showContentPlanPreview && (
           <div className="card mb-8">
             <ScriptValidationStatus
               scriptId={uploadedScriptId}
               status={validationStatus}
+            />
+          </div>
+        )}
+
+        {/* Content Plan Preview - shown after plan generation */}
+        {showContentPlanPreview && contentPlan && (
+          <div className="card mb-8">
+            <ContentPlanningPreview
+              plan={contentPlan}
+              onApprove={handleContentPlanApproval}
+              onReject={handleContentPlanRejection}
+              isProcessing={isProcessingPlanApproval}
             />
           </div>
         )}
@@ -601,10 +755,10 @@ export default function WorkflowPage() {
                 </button>
                 <button
                   onClick={startWorkflow}
-                  disabled={!sessionId || (workflowMode === 'UPLOAD' && !uploadedScriptId) || isWorkflowRunning}
+                  disabled={!sessionId || (workflowMode === 'UPLOAD' && !uploadedScriptId) || isWorkflowRunning || showContentPlanPreview}
                   className="btn btn-primary"
                 >
-                  {isWorkflowRunning ? 'Running...' : 'Start Workflow'}
+                  {isWorkflowRunning ? 'Running...' : showContentPlanPreview ? 'Awaiting Approval' : 'Start Workflow'}
                 </button>
               </div>
             </div>
