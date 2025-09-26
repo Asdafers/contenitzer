@@ -210,7 +210,7 @@ class GeminiImageService:
             # Configure image generation
             config = GenerateImagesConfig(
                 image_size="2K" if generation_request.get("quality") == "high" else "1K",
-                safety_filter_level="block_few",
+                safety_filter_level="block_low_and_above",
                 person_generation="allow_adult"
             )
 
