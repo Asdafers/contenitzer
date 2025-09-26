@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import Dict, Any, Callable, Optional
 from enum import Enum
 from dataclasses import dataclass, field
@@ -262,7 +263,10 @@ async def run_media_generation_task(script_id: str) -> str:
 
     async def media_generation_wrapper():
         with get_db_session() as db:
-            gemini_service = GeminiService(api_key="demo-key")  # Get from config
+            api_key = os.getenv('GEMINI_API_KEY')
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not set")
+            gemini_service = GeminiService(api_key=api_key)
             media_service = MediaService(db=db, gemini_service=gemini_service)
             return await media_service.generate_media_assets(script_id)
 

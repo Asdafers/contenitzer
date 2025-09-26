@@ -13,7 +13,7 @@ interface UseModelSelectionReturn {
   resetToDefaults: () => void;
 }
 
-const DEFAULT_MODEL: GeminiModel = 'gemini-2.5-flash-image';
+const DEFAULT_MODEL: GeminiModel = 'gemini-2.5-flash';
 const DEFAULT_FALLBACK = true;
 const STORAGE_KEY_MODEL = 'contentizer_selected_model';
 const STORAGE_KEY_FALLBACK = 'contentizer_allow_fallback';
@@ -28,7 +28,7 @@ export const useModelSelection = (): UseModelSelectionReturn => {
       const savedModel = localStorage.getItem(STORAGE_KEY_MODEL) as GeminiModel;
       const savedFallback = localStorage.getItem(STORAGE_KEY_FALLBACK);
 
-      if (savedModel && (savedModel === 'gemini-2.5-flash-image' || savedModel === 'gemini-pro')) {
+      if (savedModel && (savedModel === 'gemini-2.5-flash' || savedModel === 'gemini-2.5-pro')) {
         setSelectedModelState(savedModel);
       }
 

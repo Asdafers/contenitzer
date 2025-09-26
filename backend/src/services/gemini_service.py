@@ -15,8 +15,8 @@ class GeminiService:
     Service for interacting with Google Gemini APIs for content generation
 
     Supports configurable models for different purposes:
-    - Text/script generation: uses text_model (default: "gemini-pro")
-    - Image generation: uses image_model (default: "gemini-2.5-flash-image" or GEMINI_IMAGE_MODEL env var)
+    - Text/script generation: uses text_model (default: "gemini-2.5-pro")
+    - Image generation: uses image_model (default: "gemini-2.5-flash" or GEMINI_IMAGE_MODEL env var)
 
     Model configuration can be set at initialization or changed at runtime using
     set_text_model() and set_image_model() methods.
@@ -26,8 +26,8 @@ class GeminiService:
         genai.configure(api_key=api_key)
 
         # Default models
-        self.text_model_name = text_model or "gemini-pro"
-        self.image_model_name = image_model or os.getenv('GEMINI_IMAGE_MODEL', "gemini-2.5-flash-image")
+        self.text_model_name = text_model or "gemini-2.5-pro"
+        self.image_model_name = image_model or os.getenv('GEMINI_IMAGE_MODEL', "gemini-2.5-flash")
 
         # Initialize model instances
         self.text_model = genai.GenerativeModel(self.text_model_name)

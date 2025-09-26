@@ -3,7 +3,7 @@
 /**
  * Available Gemini AI models for content generation
  */
-export type GeminiModel = "gemini-2.5-flash-image" | "gemini-pro";
+export type GeminiModel = "gemini-2.5-flash" | "gemini-2.5-pro";
 
 /**
  * Asset types that can be generated

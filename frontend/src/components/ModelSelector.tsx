@@ -27,10 +27,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 }) => {
   const getModelDisplayName = (model: GeminiModel): string => {
     switch (model) {
-      case 'gemini-2.5-flash-image':
-        return 'Gemini 2.5 Flash Image';
-      case 'gemini-pro':
-        return 'Gemini Pro';
+      case 'gemini-2.5-flash':
+        return 'Gemini 2.5 Flash';
+      case 'gemini-2.5-pro':
+        return 'Gemini 2.5 Pro';
       default:
         return model;
     }

@@ -283,9 +283,14 @@ async def submit_task(
         )
 
         # Actually trigger the Celery task
-        from src.tasks.trending_tasks import analyze_trending_content
-        from src.tasks.script_tasks import generate_script_from_theme
-        from src.tasks.media_tasks import generate_media_from_script, compose_video
+        try:
+            from src.tasks.trending_tasks import analyze_trending_content
+            from src.tasks.script_tasks import generate_script_from_theme
+            from src.tasks.media_tasks import generate_media_from_script, compose_video
+            logger.info(f"Successfully imported Celery tasks for {task_type}")
+        except Exception as e:
+            logger.error(f"Failed to import Celery tasks: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to import Celery tasks: {e}")
 
         if task_type_enum == TaskType.TRENDING_ANALYSIS:
             # Trigger the Celery task with the same task_id
@@ -310,14 +315,30 @@ async def submit_task(
             )
         elif task_type_enum == TaskType.MEDIA_GENERATION:
             # Handle media generation task
-            generate_media_from_script.apply_async(
-                args=[
-                    request.session_id,
-                    request.input_data.get("script_id"),
-                    request.input_data.get("media_options", {})
-                ],
-                task_id=task_id
-            )
+            # Extract and include model configuration from input_data
+            media_options = request.input_data.get("media_options", {})
+
+            # Add model selection parameters to media_options
+            if "model" in request.input_data:
+                media_options["model"] = request.input_data["model"]
+            if "allow_fallback" in request.input_data:
+                media_options["allow_fallback"] = request.input_data["allow_fallback"]
+
+            logger.info(f"About to submit Celery media generation task {task_id} with script_id={request.input_data.get('script_id')}, model={media_options.get('model')}")
+
+            try:
+                result = generate_media_from_script.apply_async(
+                    args=[
+                        request.session_id,
+                        request.input_data.get("script_id"),
+                        media_options
+                    ],
+                    task_id=task_id
+                )
+                logger.info(f"Celery task submitted successfully: {result.id}, state: {result.state}")
+            except Exception as e:
+                logger.error(f"Failed to submit Celery media generation task: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to submit Celery task: {e}")
         elif task_type_enum == TaskType.VIDEO_COMPOSITION:
             # Handle video composition task
             # Extract job_id from input data, or find the most recent job for this session

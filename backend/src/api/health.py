@@ -5,6 +5,7 @@ from src.lib.redis import RedisHealthCheck
 from ..services.gemini_service import GeminiService
 from ..services.model_health_service import ModelHealthService
 import logging
+import os
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,11 @@ async def health_check():
 async def get_model_health():
     """Get current health status of all Gemini models"""
     try:
-        gemini_service = GeminiService(api_key="demo-key")
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+
+        gemini_service = GeminiService(api_key=api_key)
         health_service = ModelHealthService(gemini_service)
 
         health_data = await health_service.get_all_models_health()
