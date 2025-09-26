@@ -28,6 +28,9 @@ class UploadedScript(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # Relationship to generation plans
+    generation_plans = relationship("GenerationPlan", back_populates="script")
+
     def __repr__(self):
         return f"<UploadedScript(id={self.id}, workflow_id={self.workflow_id}, status={self.validation_status.value})>"
 

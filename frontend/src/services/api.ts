@@ -214,6 +214,38 @@ class ApiClient {
     const response = await this.client.get(`/api/jobs/${jobId}/status`);
     return response.data;
   }
+
+  // Content Planning API
+  async editPlanAsset(planId: string, assetId: string, updates: {
+    prompt?: string;
+    duration?: number;
+    style?: string;
+    resolution?: string;
+    asset_type?: string;
+  }): Promise<any> {
+    const response = await this.client.put(`/api/content-planning/plans/${planId}/assets/${assetId}`, {
+      asset_id: assetId,
+      ...updates
+    });
+    return response.data;
+  }
+
+  async deletePlanAsset(planId: string, assetId: string): Promise<any> {
+    const response = await this.client.delete(`/api/content-planning/plans/${planId}/assets/${assetId}`);
+    return response.data;
+  }
+
+  async changeAssetType(planId: string, assetId: string, newType: 'image' | 'video'): Promise<any> {
+    const response = await this.client.post(`/api/content-planning/plans/${planId}/assets/${assetId}/change-type`, {
+      new_type: newType
+    });
+    return response.data;
+  }
+
+  async getContentPlan(planId: string): Promise<any> {
+    const response = await this.client.get(`/api/content-planning/plans/${planId}`);
+    return response.data;
+  }
 }
 
 // Create singleton instance
@@ -267,6 +299,19 @@ export const useApi = () => {
 
     getVideoProjectDetails: (projectId: string) =>
       apiClient.getVideoProjectDetails(projectId),
+
+    // Content Planning operations
+    editPlanAsset: (planId: string, assetId: string, updates: any) =>
+      apiClient.editPlanAsset(planId, assetId, updates),
+
+    deletePlanAsset: (planId: string, assetId: string) =>
+      apiClient.deletePlanAsset(planId, assetId),
+
+    changeAssetType: (planId: string, assetId: string, newType: 'image' | 'video') =>
+      apiClient.changeAssetType(planId, assetId, newType),
+
+    getContentPlan: (planId: string) =>
+      apiClient.getContentPlan(planId),
 
     // Health
     healthCheck: () =>

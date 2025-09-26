@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CheckIcon, XMarkIcon, EyeIcon, CurrencyDollarIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, XMarkIcon, EyeIcon, CurrencyDollarIcon, ClockIcon, PencilIcon, TrashIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
+import { useApi } from '../../services/api';
 
 interface Asset {
   id: string;
@@ -42,6 +43,7 @@ interface ContentPlanningPreviewProps {
   plan: ContentPlan;
   onApprove: (planId: string, modifications?: any) => void;
   onReject: (planId: string, notes?: string) => void;
+  onPlanUpdate?: (updatedPlan: ContentPlan) => void;
   isProcessing: boolean;
 }
 
@@ -49,11 +51,15 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
   plan,
   onApprove,
   onReject,
+  onPlanUpdate,
   isProcessing
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [rejectionNotes, setRejectionNotes] = useState('');
   const [showRejectionForm, setShowRejectionForm] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<string | null>(null);
+  const [localPlan, setLocalPlan] = useState(plan);
+  const { editPlanAsset, deletePlanAsset, changeAssetType } = useApi();
 
   const formatCost = (cost: number) => `$${cost.toFixed(2)}`;
   const formatTime = (minutes: number) => `${minutes} min`;
@@ -75,6 +81,52 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
     onReject(plan.plan_id, rejectionNotes);
     setShowRejectionForm(false);
     setRejectionNotes('');
+  };
+
+  const handleEditAsset = async (assetId: string, updates: any) => {
+    try {
+      const response = await editPlanAsset(localPlan.plan_id, assetId, updates);
+      setLocalPlan(prev => ({
+        ...prev,
+        assets: response.updated_assets,
+        asset_summary: response.updated_summary,
+        estimated_costs: response.updated_costs
+      }));
+      onPlanUpdate?.(localPlan);
+      setEditingAsset(null);
+    } catch (error) {
+      console.error('Failed to edit asset:', error);
+    }
+  };
+
+  const handleDeleteAsset = async (assetId: string) => {
+    try {
+      const response = await deletePlanAsset(localPlan.plan_id, assetId);
+      setLocalPlan(prev => ({
+        ...prev,
+        assets: response.updated_assets,
+        asset_summary: response.updated_summary,
+        estimated_costs: response.updated_costs
+      }));
+      onPlanUpdate?.(localPlan);
+    } catch (error) {
+      console.error('Failed to delete asset:', error);
+    }
+  };
+
+  const handleChangeAssetType = async (assetId: string, newType: 'image' | 'video') => {
+    try {
+      const response = await changeAssetType(localPlan.plan_id, assetId, newType);
+      setLocalPlan(prev => ({
+        ...prev,
+        assets: response.updated_assets,
+        asset_summary: response.updated_summary,
+        estimated_costs: response.updated_costs
+      }));
+      onPlanUpdate?.(localPlan);
+    } catch (error) {
+      console.error('Failed to change asset type:', error);
+    }
   };
 
   return (
@@ -114,7 +166,7 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
             <CurrencyDollarIcon className="h-5 w-5 text-green-600 mr-2" />
             <div>
               <p className="text-sm font-medium text-green-900">Est. Cost</p>
-              <p className="text-lg font-bold text-green-600">{formatCost(plan.estimated_costs.total)}</p>
+              <p className="text-lg font-bold text-green-600">{formatCost(localPlan.estimated_costs.total)}</p>
             </div>
           </div>
         </div>
@@ -155,13 +207,13 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
         <div className="grid grid-cols-2 gap-4">
           <div className="border rounded-lg p-4">
             <h5 className="font-medium text-gray-900 mb-2">Images</h5>
-            <p className="text-2xl font-bold text-blue-600">{plan.asset_summary.images}</p>
-            <p className="text-sm text-gray-600">Cost: {formatCost(plan.estimated_costs.images)}</p>
+            <p className="text-2xl font-bold text-blue-600">{localPlan.asset_summary.images}</p>
+            <p className="text-sm text-gray-600">Cost: {formatCost(localPlan.estimated_costs.images)}</p>
           </div>
           <div className="border rounded-lg p-4">
             <h5 className="font-medium text-gray-900 mb-2">Videos</h5>
-            <p className="text-2xl font-bold text-green-600">{plan.asset_summary.videos}</p>
-            <p className="text-sm text-gray-600">Cost: {formatCost(plan.estimated_costs.videos)}</p>
+            <p className="text-2xl font-bold text-green-600">{localPlan.asset_summary.videos}</p>
+            <p className="text-sm text-gray-600">Cost: {formatCost(localPlan.estimated_costs.videos)}</p>
           </div>
         </div>
       </div>
@@ -171,11 +223,11 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
         <div className="mb-6">
           <div className="space-y-4">
             {/* Images */}
-            {plan.assets.images.length > 0 && (
+            {localPlan.assets.images.length > 0 && (
               <div>
                 <h5 className="font-medium text-gray-900 mb-2">Image Assets</h5>
                 <div className="space-y-2">
-                  {plan.assets.images.map((asset) => (
+                  {localPlan.assets.images.map((asset) => (
                     <div key={asset.id} className="border border-gray-200 rounded p-3">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -185,6 +237,27 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
                           </p>
                         </div>
                         <div className="flex items-center space-x-2 ml-4">
+                          <button
+                            onClick={() => handleChangeAssetType(asset.id, 'video')}
+                            className="p-1 text-blue-600 hover:text-blue-800 rounded"
+                            title="Convert to video"
+                          >
+                            <ArrowsRightLeftIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setEditingAsset(asset.id)}
+                            className="p-1 text-gray-600 hover:text-gray-800 rounded"
+                            title="Edit asset"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAsset(asset.id)}
+                            className="p-1 text-red-600 hover:text-red-800 rounded"
+                            title="Delete asset"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
                           <span className={`px-2 py-1 rounded text-xs ${getComplexityColor(asset.generation_complexity)}`}>
                             {asset.generation_complexity}
                           </span>
@@ -200,11 +273,11 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
             )}
 
             {/* Videos */}
-            {plan.assets.videos.length > 0 && (
+            {localPlan.assets.videos.length > 0 && (
               <div>
                 <h5 className="font-medium text-gray-900 mb-2">Video Assets</h5>
                 <div className="space-y-2">
-                  {plan.assets.videos.map((asset) => (
+                  {localPlan.assets.videos.map((asset) => (
                     <div key={asset.id} className="border border-gray-200 rounded p-3">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -214,6 +287,27 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
                           </p>
                         </div>
                         <div className="flex items-center space-x-2 ml-4">
+                          <button
+                            onClick={() => handleChangeAssetType(asset.id, 'image')}
+                            className="p-1 text-blue-600 hover:text-blue-800 rounded"
+                            title="Convert to image"
+                          >
+                            <ArrowsRightLeftIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setEditingAsset(asset.id)}
+                            className="p-1 text-gray-600 hover:text-gray-800 rounded"
+                            title="Edit asset"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAsset(asset.id)}
+                            className="p-1 text-red-600 hover:text-red-800 rounded"
+                            title="Delete asset"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
                           <span className={`px-2 py-1 rounded text-xs ${getComplexityColor(asset.generation_complexity)}`}>
                             {asset.generation_complexity}
                           </span>

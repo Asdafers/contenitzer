@@ -64,6 +64,31 @@ class ApprovalRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class AssetEditRequest(BaseModel):
+    asset_id: str
+    prompt: Optional[str] = None
+    duration: Optional[float] = None
+    style: Optional[str] = None
+    resolution: Optional[str] = None
+    asset_type: Optional[str] = None  # "image" or "video"
+
+
+class AssetDeleteRequest(BaseModel):
+    asset_id: str
+
+
+class AssetTypeChangeRequest(BaseModel):
+    new_type: str  # "image" or "video"
+
+
+class PlanUpdateResponse(BaseModel):
+    plan_id: str
+    message: str
+    updated_assets: Dict[str, List[AssetRequirement]]
+    updated_summary: Dict[str, int]
+    updated_costs: Dict[str, float]
+
+
 @router.post("/generate-plan", response_model=GenerationPlan)
 async def generate_content_plan(
     request: GenerationPlanRequest,
@@ -225,7 +250,7 @@ async def approve_content_plan(
                 "plan_id": plan_id,
                 "workflow_id": workflow_id,
                 "message": "Content plan approved and generation workflow started",
-                "estimated_completion": f"{plan.estimated_generation_time} minutes"
+                "estimated_completion": f"{plan.get('estimated_generation_time', 'unknown')} minutes"
             }
         else:
             # Plan rejected
@@ -319,4 +344,158 @@ async def get_cost_estimates() -> Dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving cost estimates"
+        )
+
+
+@router.put("/plans/{plan_id}/assets/{asset_id}", response_model=PlanUpdateResponse)
+async def edit_plan_asset(
+    plan_id: str,
+    asset_id: str,
+    edit_request: AssetEditRequest,
+    db: Session = Depends(get_db)
+) -> PlanUpdateResponse:
+    """
+    Edit a specific asset in a content plan.
+    Allows changing prompts, duration, style, resolution, and asset type.
+    """
+    try:
+        planner = EnhancedContentPlanner()
+        cost_estimator = CostEstimator()
+
+        # Retrieve the existing plan
+        plan = await planner.get_generation_plan(db, plan_id)
+        if not plan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Content plan {plan_id} not found"
+            )
+
+        # Update the specific asset
+        updated_plan = await planner.edit_plan_asset(plan, asset_id, edit_request.model_dump(exclude_none=True))
+
+        # Recalculate costs and summary
+        cost_breakdown = cost_estimator.estimate_generation_costs(updated_plan)
+
+        # Update plan in database
+        await planner.update_generation_plan(db, plan_id, updated_plan, cost_breakdown)
+
+        logger.info(f"Updated asset {asset_id} in plan {plan_id}")
+
+        return PlanUpdateResponse(
+            plan_id=plan_id,
+            message=f"Asset {asset_id} updated successfully",
+            updated_assets=updated_plan["assets"],
+            updated_summary=updated_plan["summary"],
+            updated_costs=cost_breakdown
+        )
+
+    except Exception as e:
+        logger.error(f"Error editing asset {asset_id} in plan {plan_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error editing plan asset"
+        )
+
+
+@router.delete("/plans/{plan_id}/assets/{asset_id}", response_model=PlanUpdateResponse)
+async def delete_plan_asset(
+    plan_id: str,
+    asset_id: str,
+    db: Session = Depends(get_db)
+) -> PlanUpdateResponse:
+    """
+    Delete a specific asset from a content plan.
+    """
+    try:
+        planner = EnhancedContentPlanner()
+        cost_estimator = CostEstimator()
+
+        # Retrieve the existing plan
+        plan = await planner.get_generation_plan(db, plan_id)
+        if not plan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Content plan {plan_id} not found"
+            )
+
+        # Delete the specific asset
+        updated_plan = await planner.delete_plan_asset(plan, asset_id)
+
+        # Recalculate costs and summary
+        cost_breakdown = cost_estimator.estimate_generation_costs(updated_plan)
+
+        # Update plan in database
+        await planner.update_generation_plan(db, plan_id, updated_plan, cost_breakdown)
+
+        logger.info(f"Deleted asset {asset_id} from plan {plan_id}")
+
+        return PlanUpdateResponse(
+            plan_id=plan_id,
+            message=f"Asset {asset_id} deleted successfully",
+            updated_assets=updated_plan["assets"],
+            updated_summary=updated_plan["summary"],
+            updated_costs=cost_breakdown
+        )
+
+    except Exception as e:
+        logger.error(f"Error deleting asset {asset_id} from plan {plan_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting plan asset"
+        )
+
+
+@router.post("/plans/{plan_id}/assets/{asset_id}/change-type", response_model=PlanUpdateResponse)
+async def change_asset_type(
+    plan_id: str,
+    asset_id: str,
+    type_change: AssetTypeChangeRequest,
+    db: Session = Depends(get_db)
+) -> PlanUpdateResponse:
+    """
+    Change an asset type between 'image' and 'video'.
+    Automatically adjusts cost estimation based on new type.
+    """
+    try:
+        if type_change.new_type not in ["image", "video"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Asset type must be 'image' or 'video'"
+            )
+
+        planner = EnhancedContentPlanner()
+        cost_estimator = CostEstimator()
+
+        # Retrieve the existing plan
+        plan = await planner.get_generation_plan(db, plan_id)
+        if not plan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Content plan {plan_id} not found"
+            )
+
+        # Change asset type with cost adjustment
+        updated_plan = await planner.change_asset_type(plan, asset_id, type_change.new_type)
+
+        # Recalculate costs and summary
+        cost_breakdown = cost_estimator.estimate_generation_costs(updated_plan)
+
+        # Update plan in database
+        await planner.update_generation_plan(db, plan_id, updated_plan, cost_breakdown)
+
+        logger.info(f"Changed asset {asset_id} type to {type_change.new_type} in plan {plan_id}")
+
+        return PlanUpdateResponse(
+            plan_id=plan_id,
+            message=f"Asset {asset_id} type changed to {type_change.new_type}",
+            updated_assets=updated_plan["assets"],
+            updated_summary=updated_plan["summary"],
+            updated_costs=cost_breakdown
+        )
+
+    except Exception as e:
+        logger.error(f"Error changing asset {asset_id} type in plan {plan_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error changing asset type"
         )

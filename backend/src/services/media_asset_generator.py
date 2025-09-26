@@ -15,6 +15,7 @@ from ..models.video_generation_job import VideoGenerationJob
 from ..lib.database import get_db_session
 from .storage_manager import StorageManager
 from .gemini_image_service import GeminiImageService
+from .veo_video_service import VeoVideoService
 from .script_analysis_service import ScriptAnalysisService
 
 logger = logging.getLogger(__name__)
@@ -222,16 +223,24 @@ class MediaAssetGenerator:
             api_key = os.getenv('GEMINI_API_KEY', 'test-key')
             gemini_service = GeminiImageService(api_key=api_key)
 
-            # Generate AI description (takes 1.5-3 seconds for real AI processing)
+            # Generate real AI image (takes 1.5-3 seconds for real AI processing)
             ai_result = gemini_service.generate_image(ai_generation_request)
 
-            # Create image file (still placeholder visually, but AI-processed metadata)
-            self._create_placeholder_image(
-                file_path,
-                width, height,
-                scene["background_style"],
-                ai_result["image_description"]  # Use AI-generated description
-            )
+            # Check if we got a real image or need to create placeholder
+            if ai_result.get("image_path") and os.path.exists(ai_result["image_path"]):
+                # Real image was generated, use that path
+                file_path = Path(ai_result["image_path"])
+                filename = file_path.name  # Use the real filename
+                logger.info(f"✅ Using real AI-generated image: {file_path}")
+            else:
+                # Fallback to placeholder if real generation failed
+                self._create_placeholder_image(
+                    file_path,
+                    width, height,
+                    scene["background_style"],
+                    ai_result["image_description"]  # Use AI-generated description
+                )
+                logger.info(f"⚠️ Using placeholder image: {file_path}")
 
             # Now set the paths after file exists
             asset.file_path = str(file_path)
@@ -263,6 +272,88 @@ class MediaAssetGenerator:
         except Exception as e:
             logger.error(f"Failed to generate background image: {e}")
             raise MediaAssetGeneratorError(f"Background image generation failed: {e}")
+
+    def _generate_background_video(
+        self,
+        db,
+        job_id: uuid.UUID,
+        scene: Dict[str, Any],
+        options: Dict[str, Any]
+    ) -> MediaAsset:
+        """Generate a background video for a scene."""
+        try:
+            duration = 8  # Veo 3 only supports 8-second videos
+
+            # Create asset record
+            asset = MediaAsset(
+                id=uuid.uuid4(),
+                asset_type=AssetType.VIDEO_CLIP,
+                source_type=SourceType.GENERATED,
+                generation_job_id=job_id,
+                duration=duration,
+                creation_timestamp=datetime.now()
+            )
+
+            # Generate file path
+            filename = f"vid_{scene['index']:03d}_{asset.id}.mp4"
+            file_path = Path(self.storage_manager.get_asset_path("videos") / filename)
+
+            # Use real AI video generation
+            ai_generation_request = {
+                "prompt": scene["text"][:200],  # Use scene text as prompt
+                "duration": duration,
+                "quality": options.get("quality", "high")
+            }
+
+            # Initialize AI service and generate video
+            import os
+            api_key = os.getenv('GEMINI_API_KEY', 'test-key')
+            veo_service = VeoVideoService(api_key=api_key)
+
+            # Generate real AI video (takes 5-15 seconds for real AI processing)
+            ai_result = veo_service.generate_video(ai_generation_request)
+
+            # Check if we got a real video or need to create placeholder
+            if ai_result.get("video_path") and os.path.exists(ai_result["video_path"]):
+                # Real video was generated, use that path
+                file_path = Path(ai_result["video_path"])
+                filename = file_path.name  # Use the real filename
+                logger.info(f"✅ Using real AI-generated video: {file_path}")
+            else:
+                # Fallback to placeholder if real generation failed
+                logger.info(f"⚠️ Video generation failed, would create placeholder: {file_path}")
+                # For now, just raise an error instead of creating placeholder video
+                raise MediaAssetGeneratorError("Video generation not available in mock mode")
+
+            # Set the paths
+            asset.file_path = str(file_path)
+            asset.url_path = f"/media/assets/videos/{filename}"
+
+            # Set video metadata for Veo 3 specifications
+            asset.set_video_metadata(
+                resolution="1280x720",  # Veo 3 generates 720p
+                fps=24.0,  # Veo 3 generates at 24fps
+                codec="h264"
+            )
+
+            # Set AI model info
+            asset.gemini_model_used = ai_result["ai_model_used"]
+
+            # Store additional AI generation info in generation_metadata
+            if not asset.generation_metadata:
+                asset.generation_metadata = {}
+            asset.generation_metadata.update({
+                "processing_time": ai_result["processing_time"],
+                "generation_prompt": ai_result["generation_prompt"],
+                "video_description": ai_result["video_description"]
+            })
+
+            db.add(asset)
+            return asset
+
+        except Exception as e:
+            logger.error(f"Failed to generate background video: {e}")
+            raise MediaAssetGeneratorError(f"Background video generation failed: {e}")
 
     def _generate_text_overlay(
         self,

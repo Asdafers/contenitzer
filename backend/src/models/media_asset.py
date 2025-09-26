@@ -72,8 +72,8 @@ class MediaAsset(Base):
     creation_timestamp = Column(DateTime(timezone=True), server_default=func.now())
     generation_job_id = Column(UUID(as_uuid=True), ForeignKey("video_generation_jobs.id"), nullable=False)
 
-    # Gemini model tracking
-    gemini_model_used = Column(String(100), nullable=True)  # Model used for generation (e.g., 'gemini-1.5-pro')
+    # AI model tracking (supports Gemini, Imagen, VEO, etc.)
+    gemini_model_used = Column(String(100), nullable=True)  # Model used for generation (e.g., 'gemini-1.5-pro', 'imagen-3.0-generate-001', 'veo-1.0')
     generation_status = Column(Enum(GenerationStatusEnum), nullable=False, default=GenerationStatusEnum.pending)
     generation_metadata = Column(JSON, default=dict)  # Model availability, parameters, timestamps
     generation_started_at = Column(DateTime(timezone=True), nullable=True)
@@ -117,18 +117,31 @@ class MediaAsset(Base):
         return duration
 
     @validates('gemini_model_used')
-    def validate_gemini_model(self, key: str, model_name: Optional[str]) -> Optional[str]:
-        """Validate that gemini_model_used follows correct pattern when provided."""
+    def validate_ai_model(self, key: str, model_name: Optional[str]) -> Optional[str]:
+        """Validate that model name follows correct patterns for supported AI models."""
         if model_name is not None:
             # Must be non-empty string
             if not isinstance(model_name, str) or not model_name.strip():
-                raise ValueError("gemini_model_used must be a non-empty string when provided")
+                raise ValueError("model name must be a non-empty string when provided")
 
             model_name = model_name.strip()
 
-            # Must follow gemini-* pattern (allowing dots, numbers, and hyphens)
-            if not re.match(r'^gemini(-[a-z0-9.]+)*$', model_name, re.IGNORECASE):
-                raise ValueError(f"gemini_model_used must follow 'gemini-*' pattern, got: {model_name}")
+            # Support multiple AI model patterns:
+            # - gemini-* (text/analysis models)
+            # - imagen-* (image generation models)
+            # - veo-* (video generation models)
+            # - Any other pattern with provider-version format
+            valid_patterns = [
+                r'^gemini(-[a-z0-9.]+)*$',           # Gemini models
+                r'^imagen(-[a-z0-9.]+)*$',           # Imagen models
+                r'^veo(-[a-z0-9.]+)*$',              # VEO video models
+                r'^[a-z]+(-[a-z0-9.]+)+$'           # Generic provider-version pattern
+            ]
+
+            is_valid = any(re.match(pattern, model_name, re.IGNORECASE) for pattern in valid_patterns)
+
+            if not is_valid:
+                raise ValueError(f"model name must follow supported patterns (gemini-*, imagen-*, veo-*, or provider-version format), got: {model_name}")
 
         return model_name
 
@@ -491,10 +504,10 @@ class MediaAsset(Base):
         is_valid, metadata_errors = self.validate_metadata_structure()
         errors.extend(metadata_errors)
 
-        # Validate Gemini model fields
+        # Validate AI model fields
         if self.gemini_model_used is not None:
             try:
-                self.validate_gemini_model('gemini_model_used', self.gemini_model_used)
+                self.validate_ai_model('gemini_model_used', self.gemini_model_used)
             except ValueError as e:
                 errors.append(str(e))
 
@@ -521,7 +534,7 @@ class MediaAsset(Base):
         if (self.gemini_model_used and
             self.generation_status != GenerationStatusEnum.pending and
             not self.generation_started_at):
-            errors.append("generation_started_at is required when gemini_model_used is specified and status is not pending")
+            errors.append("generation_started_at is required when AI model is specified and status is not pending")
 
         return len(errors) == 0, errors
 

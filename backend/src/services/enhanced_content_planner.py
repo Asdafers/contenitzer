@@ -13,6 +13,7 @@ import os
 from .gemini_service import GeminiService
 from .script_analysis_service import ScriptAnalysisService
 from ..lib.exceptions import ContentPlanningError
+from ..models.generation_plan import GenerationPlan as GenerationPlanDB, PlanStatusEnum
 
 logger = logging.getLogger(__name__)
 
@@ -262,26 +263,71 @@ class EnhancedContentPlanner:
 
     async def store_generation_plan(self, db, plan) -> str:
         """Store generation plan in database for approval workflow."""
-        # TODO: Implement database storage
-        logger.info(f"Storing generation plan {plan.plan_id}")
-        return plan.plan_id
+        try:
+            logger.info(f"Storing generation plan {plan.plan_id}")
+
+            # Convert Pydantic model to JSON string
+            plan_json = plan.model_dump_json()
+
+            # Convert string script_id to UUID
+            script_uuid = uuid.UUID(plan.script_id)
+
+            # Create database record
+            db_plan = GenerationPlanDB(
+                id=uuid.UUID(plan.plan_id),
+                script_id=script_uuid,
+                plan_data=plan_json,
+                status=PlanStatusEnum.PENDING
+            )
+
+            db.add(db_plan)
+            db.commit()
+            db.refresh(db_plan)
+
+            logger.info(f"Successfully stored generation plan {plan.plan_id}")
+            return plan.plan_id
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to store generation plan {plan.plan_id}: {e}")
+            raise ContentPlanningError(f"Failed to store generation plan: {e}")
 
     async def get_generation_plan(self, db, plan_id: str):
         """Retrieve stored generation plan."""
-        # TODO: Implement database retrieval
-        logger.info(f"Retrieving generation plan {plan_id}")
-        return None
+        try:
+            logger.info(f"Retrieving generation plan {plan_id}")
+
+            # Convert string to UUID for database query
+            plan_uuid = uuid.UUID(plan_id)
+
+            # Query database
+            db_plan = db.query(GenerationPlanDB).filter(GenerationPlanDB.id == plan_uuid).first()
+
+            if not db_plan:
+                logger.warning(f"Generation plan {plan_id} not found in database")
+                return None
+
+            # Convert JSON back to dict for return
+            plan_data = json.loads(db_plan.plan_data)
+            logger.info(f"Successfully retrieved generation plan {plan_id}")
+            return plan_data
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve generation plan {plan_id}: {e}")
+            raise ContentPlanningError(f"Failed to retrieve generation plan: {e}")
 
     async def apply_user_modifications(self, plan, modifications: Dict[str, Any]):
         """Apply user modifications to generation plan."""
-        logger.info(f"Applying user modifications to plan {plan.plan_id}")
+        plan_id = plan.get('plan_id', 'unknown')
+        logger.info(f"Applying user modifications to plan {plan_id}")
         # TODO: Implement modification logic
         return plan
 
     async def start_generation_workflow(self, db, plan) -> str:
         """Start the actual asset generation workflow."""
         workflow_id = str(uuid.uuid4())
-        logger.info(f"Starting generation workflow {workflow_id} for plan {plan.plan_id}")
+        plan_id = plan.get('plan_id', 'unknown')
+        logger.info(f"Starting generation workflow {workflow_id} for plan {plan_id}")
         # TODO: Integrate with existing Celery workflow
         return workflow_id
 
@@ -289,3 +335,172 @@ class EnhancedContentPlanner:
         """Mark plan as rejected by user."""
         logger.info(f"Marking plan {plan_id} as rejected: {notes}")
         # TODO: Implement rejection tracking
+
+    async def edit_plan_asset(self, plan: Dict[str, Any], asset_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """Edit a specific asset in the plan."""
+        logger.info(f"Editing asset {asset_id} with updates: {list(updates.keys())}")
+
+        updated_plan = plan.copy()
+        asset_found = False
+
+        # Find and update the asset in all asset categories
+        for asset_type in ["images", "videos", "audio"]:
+            if asset_type in updated_plan.get("assets", {}):
+                for i, asset in enumerate(updated_plan["assets"][asset_type]):
+                    if asset.get("id") == asset_id:
+                        # Update the asset with provided fields
+                        for key, value in updates.items():
+                            if key == "asset_type" and value != asset_type:
+                                # Handle type change separately
+                                continue
+                            asset[key] = value
+
+                        # Recalculate cost based on changes
+                        if "duration" in updates or "asset_type" in updates:
+                            asset["estimated_cost"] = self._calculate_asset_cost(asset)
+
+                        asset_found = True
+                        logger.info(f"Updated asset {asset_id} in {asset_type} category")
+                        break
+
+                if asset_found:
+                    break
+
+        if not asset_found:
+            raise ValueError(f"Asset {asset_id} not found in plan")
+
+        # Update summary counts
+        updated_plan["summary"] = self._calculate_summary(updated_plan["assets"])
+
+        return updated_plan
+
+    async def delete_plan_asset(self, plan: Dict[str, Any], asset_id: str) -> Dict[str, Any]:
+        """Delete a specific asset from the plan."""
+        logger.info(f"Deleting asset {asset_id}")
+
+        updated_plan = plan.copy()
+        asset_found = False
+
+        # Find and remove the asset from all asset categories
+        for asset_type in ["images", "videos", "audio"]:
+            if asset_type in updated_plan.get("assets", {}):
+                original_count = len(updated_plan["assets"][asset_type])
+                updated_plan["assets"][asset_type] = [
+                    asset for asset in updated_plan["assets"][asset_type]
+                    if asset.get("id") != asset_id
+                ]
+
+                if len(updated_plan["assets"][asset_type]) < original_count:
+                    asset_found = True
+                    logger.info(f"Deleted asset {asset_id} from {asset_type} category")
+                    break
+
+        if not asset_found:
+            raise ValueError(f"Asset {asset_id} not found in plan")
+
+        # Update summary counts
+        updated_plan["summary"] = self._calculate_summary(updated_plan["assets"])
+
+        return updated_plan
+
+    async def change_asset_type(self, plan: Dict[str, Any], asset_id: str, new_type: str) -> Dict[str, Any]:
+        """Change an asset type between image and video."""
+        logger.info(f"Changing asset {asset_id} type to {new_type}")
+
+        updated_plan = plan.copy()
+        asset_to_move = None
+        original_type = None
+
+        # Find the asset and determine its current type
+        for asset_type in ["images", "videos"]:
+            if asset_type in updated_plan.get("assets", {}):
+                for asset in updated_plan["assets"][asset_type]:
+                    if asset.get("id") == asset_id:
+                        asset_to_move = asset.copy()
+                        original_type = asset_type
+                        # Remove from original category
+                        updated_plan["assets"][asset_type] = [
+                            a for a in updated_plan["assets"][asset_type]
+                            if a.get("id") != asset_id
+                        ]
+                        break
+                if asset_to_move:
+                    break
+
+        if not asset_to_move:
+            raise ValueError(f"Asset {asset_id} not found or cannot change type")
+
+        # Update asset properties for new type
+        asset_to_move["type"] = new_type
+        asset_to_move["estimated_cost"] = self._calculate_asset_cost_by_type(asset_to_move, new_type)
+
+        # Add to new category
+        target_category = "images" if new_type == "image" else "videos"
+        if target_category not in updated_plan["assets"]:
+            updated_plan["assets"][target_category] = []
+        updated_plan["assets"][target_category].append(asset_to_move)
+
+        # Update summary counts
+        updated_plan["summary"] = self._calculate_summary(updated_plan["assets"])
+
+        logger.info(f"Changed asset {asset_id} from {original_type} to {target_category}")
+        return updated_plan
+
+    async def update_generation_plan(self, db, plan_id: str, updated_plan: Dict[str, Any], cost_breakdown: Dict[str, float]):
+        """Update an existing generation plan in the database."""
+        try:
+            logger.info(f"Updating generation plan {plan_id}")
+
+            # Convert string to UUID for database query
+            plan_uuid = uuid.UUID(plan_id)
+
+            # Update the plan data
+            updated_plan_data = {
+                **updated_plan,
+                "estimated_costs": cost_breakdown,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+
+            # Query and update database record
+            db_plan = db.query(GenerationPlanDB).filter(GenerationPlanDB.id == plan_uuid).first()
+            if not db_plan:
+                raise ValueError(f"Plan {plan_id} not found in database")
+
+            db_plan.plan_data = json.dumps(updated_plan_data)
+            db.commit()
+
+            logger.info(f"Successfully updated generation plan {plan_id}")
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to update generation plan {plan_id}: {e}")
+            raise ContentPlanningError(f"Failed to update generation plan: {e}")
+
+    def _calculate_asset_cost(self, asset: Dict[str, Any]) -> float:
+        """Calculate cost for a single asset."""
+        asset_type = asset.get("type", "")
+        duration = asset.get("duration", 1.0)
+
+        return self._calculate_asset_cost_by_type(asset, asset_type)
+
+    def _calculate_asset_cost_by_type(self, asset: Dict[str, Any], asset_type: str) -> float:
+        """Calculate cost for asset by type."""
+        duration = asset.get("duration", 1.0)
+
+        if asset_type == "image":
+            return 0.04  # DALL-E 3 pricing
+        elif asset_type == "video":
+            return duration * 0.50  # RunwayML pricing per second
+        elif asset_type == "narration" or asset_type == "audio":
+            return 0.50  # Audio generation pricing
+        else:
+            return 0.10  # Default fallback
+
+    def _calculate_summary(self, assets: Dict[str, List]) -> Dict[str, int]:
+        """Calculate summary counts for asset categories."""
+        return {
+            "images": len(assets.get("images", [])),
+            "videos": len(assets.get("videos", [])),
+            "audio": len(assets.get("audio", [])),
+            "total_assets": len(assets.get("images", [])) + len(assets.get("videos", [])) + len(assets.get("audio", []))
+        }

@@ -63,6 +63,14 @@ class AudioGenerationError(AIProcessingError):
         self.audio_requirements = audio_requirements or {}
 
 
+class VideoGenerationError(AIProcessingError):
+    """Exception for AI video generation failures."""
+    def __init__(self, message: str, generation_prompt: str = None, model_response: str = None):
+        super().__init__(message)
+        self.generation_prompt = generation_prompt or ""
+        self.model_response = model_response or ""
+
+
 class AIProcessingTimeoutError(AIProcessingError):
     """Exception for AI processing timeout."""
     def __init__(self, message: str, processing_stage: str = None, timeout_seconds: int = None):
