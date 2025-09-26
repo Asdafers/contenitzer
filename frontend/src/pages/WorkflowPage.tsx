@@ -257,8 +257,8 @@ export default function WorkflowPage() {
       if (!currentWorkflowId) {
         console.log('Creating workflow...');
         try {
-          console.log('🚀 UPDATED: About to make fetch call directly to localhost:8000 (bypassing proxy)');
-          const response = await fetch('http://localhost:8000/api/v1/workflows', {
+          console.log('🚀 Creating workflow via proxy...');
+          const response = await fetch('/api/v1/workflows', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: 'Content Creation Workflow' })
@@ -283,7 +283,7 @@ export default function WorkflowPage() {
 
           // Set workflow mode on backend
           console.log('Setting workflow mode on backend...');
-          const modeResponse = await fetch(`http://localhost:8000/api/v1/workflows/${currentWorkflowId}/mode`, {
+          const modeResponse = await fetch(`/api/v1/workflows/${currentWorkflowId}/mode`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode })
@@ -303,6 +303,9 @@ export default function WorkflowPage() {
             stack: error.stack,
             name: error.name
           });
+          // Don't leave user stuck - provide fallback
+          alert('Workflow creation failed. Please try refreshing the page.');
+          setWorkflowId('error-fallback');
           // Continue without backend workflow - frontend-only mode
         }
       }
@@ -469,11 +472,21 @@ export default function WorkflowPage() {
             <h2 className="text-2xl font-semibold text-secondary-900 mb-6">
               Upload Your Script
             </h2>
-            <ScriptUploadComponent
-              onUploadSuccess={handleUploadSuccessFromComponent}
-              onUploadError={handleUploadError}
-              workflowId={workflowId || ''}
-            />
+            {workflowId ? (
+              <ScriptUploadComponent
+                onUploadSuccess={handleUploadSuccessFromComponent}
+                onUploadError={handleUploadError}
+                workflowId={workflowId}
+              />
+            ) : (
+              <div className="flex items-center justify-center p-8">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Setting up workflow...</p>
+                  <p className="text-xs text-gray-500 mt-2">This should only take a moment</p>
+                </div>
+              </div>
+            )}
             {/* {uploadState.error && (
               <div className="alert alert-error mt-4">
                 {uploadState.error}

@@ -104,13 +104,18 @@ export const ScriptUploadComponent: React.FC<ScriptUploadComponentProps> = ({
         formData.append('content', content);
       }
 
+      console.log('Submitting upload request...', { workflowId, uploadMethod, contentLength: content.length });
+
       const response = await fetch('/api/v1/scripts/upload', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Upload response status:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Upload error response:', errorData);
         throw new Error(errorData.message || 'Upload failed');
       }
 

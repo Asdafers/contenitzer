@@ -1,0 +1,382 @@
+openapi: 3.0.3
+info:
+  title: Frontend Gemini Model Integration API
+  description: Enhanced frontend API contracts for Gemini model selection and management
+  version: 1.0.0
+
+paths:
+  /api/media/generate:
+    post:
+      summary: Generate media assets with model selection
+      description: Create media generation job with AI model preferences and fallback options
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                script_content:
+                  type: string
+                  description: Direct script content for media generation
+                  example: "Speaker 1: Today we'll explore artificial intelligence technologies..."
+                  minLength: 1
+                  maxLength: 50000
+                asset_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [image, video_clip, audio]
+                  description: Types of assets to generate
+                  example: ["image", "video_clip"]
+                  minItems: 1
+                num_assets:
+                  type: integer
+                  description: Number of assets to generate
+                  example: 5
+                  minimum: 1
+                  maximum: 20
+                  default: 5
+                preferred_model:
+                  type: string
+                  description: Preferred AI model for generation
+                  enum: ["gemini-2.5-flash-image", "gemini-pro"]
+                  example: "gemini-2.5-flash-image"
+                  default: "gemini-2.5-flash-image"
+                allow_fallback:
+                  type: boolean
+                  description: Allow automatic fallback to alternative model
+                  example: true
+                  default: true
+              required:
+                - script_content
+                - asset_types
+      responses:
+        '202':
+          description: Generation job created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                    description: Unique job identifier
+                    example: "550e8400-e29b-41d4-a716-446655440000"
+                  status:
+                    type: string
+                    enum: [pending, generating, completed, failed]
+                    description: Current job status
+                    example: "pending"
+                  model_selected:
+                    type: string
+                    description: Model that will be used for generation
+                    example: "gemini-2.5-flash-image"
+                  estimated_completion:
+                    type: string
+                    format: date-time
+                    description: Estimated completion timestamp
+                    example: "2025-09-26T10:35:00Z"
+                  fallback_occurred:
+                    type: boolean
+                    description: Whether fallback model was selected
+                    example: false
+                required:
+                  - job_id
+                  - status
+                  - model_selected
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: All models temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/health/models:
+    get:
+      summary: Get AI model health status
+      description: Retrieve current health and availability status of all AI models
+      responses:
+        '200':
+          description: Model health status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                    description: Health check timestamp
+                    example: "2025-09-26T10:30:00Z"
+                  models:
+                    type: object
+                    properties:
+                      gemini-2.5-flash-image:
+                        $ref: '#/components/schemas/ModelHealthStatus'
+                      gemini-pro:
+                        $ref: '#/components/schemas/ModelHealthStatus'
+                    description: Health status for each model
+                  overall_status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                    description: Overall system health
+                    example: "healthy"
+                  primary_model_available:
+                    type: boolean
+                    description: Whether primary model is available
+                    example: true
+                required:
+                  - timestamp
+                  - models
+                  - overall_status
+                  - primary_model_available
+        '500':
+          description: Health check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/media/assets/{asset_id}:
+    get:
+      summary: Get asset details with model metadata
+      description: Retrieve detailed asset information including generation model data
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Asset unique identifier
+      responses:
+        '200':
+          description: Asset details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    description: Asset unique identifier
+                    example: "550e8400-e29b-41d4-a716-446655440001"
+                  asset_type:
+                    type: string
+                    enum: [image, video_clip, audio]
+                    description: Type of generated asset
+                    example: "image"
+                  file_path:
+                    type: string
+                    description: Path to asset file
+                    example: "/media/images/bg_001_uuid.jpg"
+                  generation_model:
+                    type: string
+                    description: Model used for generation
+                    example: "gemini-2.5-flash-image"
+                  model_fallback_used:
+                    type: boolean
+                    description: Whether fallback model was used
+                    example: false
+                  generation_metadata:
+                    type: object
+                    properties:
+                      prompt:
+                        type: string
+                        description: Generation prompt used
+                        example: "Professional background image for AI discussion"
+                      generation_time_ms:
+                        type: integer
+                        description: Time taken to generate asset
+                        example: 25000
+                      model_version:
+                        type: string
+                        description: Specific model version used
+                        example: "gemini-2.5-flash-image"
+                      quality_score:
+                        type: number
+                        format: float
+                        description: Generated asset quality score
+                        example: 0.95
+                        minimum: 0
+                        maximum: 1
+                  created_at:
+                    type: string
+                    format: date-time
+                    description: Asset creation timestamp
+                    example: "2025-09-26T10:30:00Z"
+                required:
+                  - id
+                  - asset_type
+                  - generation_model
+                  - model_fallback_used
+                  - created_at
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/jobs/{job_id}/status:
+    get:
+      summary: Get generation job status
+      description: Check the current status and progress of a media generation job
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Job unique identifier
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                    description: Job unique identifier
+                    example: "550e8400-e29b-41d4-a716-446655440000"
+                  status:
+                    type: string
+                    enum: [pending, generating, completed, failed]
+                    description: Current job status
+                    example: "generating"
+                  progress_percentage:
+                    type: integer
+                    description: Completion percentage
+                    example: 75
+                    minimum: 0
+                    maximum: 100
+                  model_selected:
+                    type: string
+                    description: Model being used for generation
+                    example: "gemini-2.5-flash-image"
+                  fallback_occurred:
+                    type: boolean
+                    description: Whether fallback was used
+                    example: false
+                  estimated_completion:
+                    type: string
+                    format: date-time
+                    description: Estimated completion time
+                    example: "2025-09-26T10:35:00Z"
+                  actual_completion:
+                    type: string
+                    format: date-time
+                    description: Actual completion time (if completed)
+                    example: "2025-09-26T10:33:45Z"
+                  error_message:
+                    type: string
+                    description: Error message (if failed)
+                    example: "Model temporarily unavailable"
+                  generated_assets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        asset_id:
+                          type: string
+                          format: uuid
+                        asset_type:
+                          type: string
+                          enum: [image, video_clip, audio]
+                        model_used:
+                          type: string
+                    description: List of generated assets
+                required:
+                  - job_id
+                  - status
+                  - model_selected
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ModelHealthStatus:
+      type: object
+      properties:
+        available:
+          type: boolean
+          description: Whether model is currently available
+          example: true
+        last_success:
+          type: string
+          format: date-time
+          description: Last successful generation timestamp
+          example: "2025-09-26T10:29:00Z"
+        error_count:
+          type: integer
+          description: Recent error count (last hour)
+          example: 0
+          minimum: 0
+        avg_response_time_ms:
+          type: integer
+          description: Average response time in milliseconds
+          example: 25000
+          minimum: 0
+        rate_limit_remaining:
+          type: integer
+          description: Remaining API calls in current window
+          example: 450
+          minimum: 0
+        last_checked:
+          type: string
+          format: date-time
+          description: Last health check timestamp
+          example: "2025-09-26T10:30:00Z"
+      required:
+        - available
+        - error_count
+        - avg_response_time_ms
+        - last_checked
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Model temporarily unavailable"
+        error_code:
+          type: string
+          description: Machine-readable error code
+          example: "MODEL_UNAVAILABLE"
+        details:
+          type: object
+          description: Additional error context
+          example:
+            attempted_model: "gemini-2.5-flash-image"
+            fallback_available: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2025-09-26T10:30:00Z"
+        retry_after:
+          type: integer
+          description: Seconds to wait before retrying
+          example: 300
+      required:
+        - error
+        - error_code
+        - timestamp

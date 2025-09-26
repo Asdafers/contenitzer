@@ -3,6 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 import { Play, Download, Share2, Settings, AlertCircle } from 'lucide-react';
 import VideoPlayer from '../components/VideoPlayer';
 import DownloadProgress from '../components/DownloadProgress';
+import { AssetMetadataView } from '../components/AssetMetadataView';
+import { HealthStatusDisplay } from '../components/HealthStatusDisplay';
+import { useModelHealth } from '../hooks/useModelHealth';
 
 interface GeneratedVideo {
   id: string;
@@ -36,6 +39,8 @@ const VideoGeneration: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloadActive, setDownloadActive] = useState(false);
+
+  const { healthData } = useModelHealth(true, 30000);
 
   useEffect(() => {
     if (videoId) {

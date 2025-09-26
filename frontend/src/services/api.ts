@@ -1,5 +1,7 @@
 // API client for Content Creator Workbench backend
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import { GeminiModel } from '../types/gemini';
+import { SystemModelHealth } from '../types/health';
 
 // Base configuration
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -40,11 +42,15 @@ export interface ScriptGenerateResponse {
 
 export interface MediaGenerateRequest {
   script_id: string;
+  model?: GeminiModel;
+  allow_fallback?: boolean;
 }
 
 export interface MediaGenerateResponse {
   project_id: string;
   status: string;
+  model_selected?: GeminiModel;
+  fallback_occurred?: boolean;
 }
 
 export interface VideoComposeRequest {
@@ -190,6 +196,22 @@ class ApiClient {
   // Health check
   async healthCheck(): Promise<any> {
     const response = await this.client.get('/');
+    return response.data;
+  }
+
+  // Model health endpoints
+  async getModelHealth(): Promise<SystemModelHealth> {
+    const response = await this.client.get('/api/health/models');
+    return response.data;
+  }
+
+  async getAssetDetails(assetId: string): Promise<any> {
+    const response = await this.client.get(`/api/media/assets/${assetId}`);
+    return response.data;
+  }
+
+  async getJobStatus(jobId: string): Promise<any> {
+    const response = await this.client.get(`/api/jobs/${jobId}/status`);
     return response.data;
   }
 }
