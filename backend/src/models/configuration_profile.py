@@ -20,6 +20,12 @@ class ConfigurationProfile(BaseModel):
     youtube_api_key: str = Field(..., min_length=1, description="YouTube Data API v3 key")
     gemini_api_key: str = Field(..., min_length=1, description="Google Gemini API key")
 
+    # Gemini Model Configuration
+    gemini_image_model: str = Field(
+        "gemini-2.5-flash-image",
+        description="Gemini model for image processing tasks"
+    )
+
     # Service URLs
     backend_url: Optional[str] = Field("http://localhost:8000", description="Backend API URL")
     frontend_url: Optional[str] = Field("http://localhost:3000", description="Frontend URL")
@@ -46,6 +52,31 @@ class ConfigurationProfile(BaseModel):
             raise ValueError("API key cannot be a placeholder value")
         if len(v) < 10:
             raise ValueError("API key seems too short (minimum 10 characters)")
+        return v
+
+    @validator("gemini_image_model")
+    def validate_gemini_image_model(cls, v):
+        """Validate Gemini model name format and allowed values"""
+        valid_models = [
+            "gemini-2.5-flash-image",
+            "gemini-pro",
+            "gemini-pro-vision",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash"
+        ]
+
+        if not v:
+            raise ValueError("Gemini image model cannot be empty")
+
+        # Allow any model starting with 'gemini-' for future compatibility
+        if not v.startswith('gemini-'):
+            raise ValueError("Gemini model name must start with 'gemini-'")
+
+        # Log warning for unknown models but don't reject them
+        if v not in valid_models:
+            import warnings
+            warnings.warn(f"Using non-standard Gemini model: {v}. Supported models: {', '.join(valid_models)}")
+
         return v
 
     @validator("backend_url", "frontend_url")
@@ -78,6 +109,7 @@ class ConfigurationProfile(BaseModel):
                 "redis_task_db": 2,
                 "youtube_api_key": "AIzaSyExample123456789",
                 "gemini_api_key": "AIzaSyGeminiExample123456789",
+                "gemini_image_model": "gemini-2.5-flash-image",
                 "backend_url": "http://localhost:8000",
                 "frontend_url": "http://localhost:3000",
                 "websocket_url": "ws://localhost:8000/ws",

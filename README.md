@@ -110,8 +110,9 @@ Frontend runs on `http://localhost:3000`
 # Optional environment variables
 export DATABASE_URL="sqlite:///./contentizer.db"
 export STORAGE_PATH="/tmp/contentizer"
-export OPENAI_API_KEY="your-openai-key"        # For AI generation
+export GEMINI_API_KEY="your-gemini-key"        # For AI generation
 export YOUTUBE_API_KEY="your-youtube-key"      # For trending analysis
+export GEMINI_IMAGE_MODEL="gemini-2.5-flash-image"  # Primary model for images/videos
 ```
 
 ## 🧪 Testing
@@ -192,8 +193,8 @@ VideoProject (1) → (1) ComposedVideo
 - **Axios**: HTTP client with interceptors
 
 ### **AI & Media**
-- **OpenAI API**: GPT models for script generation
-- **Gemini API**: Google's AI for multi-modal content
+- **Gemini API**: Google's latest AI models for multi-modal content generation
+- **Gemini 2.5 Flash Image**: Primary model for image and video generation
 - **YouTube Data API v3**: Trending analysis and upload
 - **FFmpeg**: Video composition and processing
 
@@ -256,7 +257,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - Built with [Claude Code](https://claude.ai/code) assistance
-- Powered by OpenAI and Google Gemini AI APIs
+- Powered by Google Gemini AI APIs (Gemini 2.5 Flash Image model)
 - YouTube Data API for trending content analysis
 - FFmpeg for professional video processing
 

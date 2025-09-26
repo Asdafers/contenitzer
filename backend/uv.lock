@@ -361,7 +361,7 @@ requires-dist = [
     { name = "flake8", specifier = ">=6.1.0" },
     { name = "google-api-python-client", specifier = ">=2.108.0" },
     { name = "google-auth", specifier = ">=2.23.4" },
-    { name = "google-generativeai", specifier = ">=0.3.0" },
+    { name = "google-generativeai", specifier = ">=0.8.5" },
     { name = "httpx", specifier = ">=0.25.2" },
     { name = "mypy", specifier = ">=1.7.1" },
     { name = "pillow", specifier = ">=11.3.0" },

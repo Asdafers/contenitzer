@@ -13,6 +13,7 @@ from .workflow import Workflow
 from .generated_video import GeneratedVideo
 from .video_generation_job import VideoGenerationJob
 from .media_storage import MediaStorage
+from .gemini_model_config import GeminiModelConfig
 
 # Export all models
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "Workflow",
     "GeneratedVideo",
     "VideoGenerationJob",
-    "MediaStorage"
+    "MediaStorage",
+    "GeminiModelConfig"
 ]

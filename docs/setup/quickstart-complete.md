@@ -82,7 +82,16 @@ nano backend/.env
 
 ### Required API Keys
 1. **YouTube Data API v3**: Get from [Google Cloud Console](https://console.cloud.google.com/)
-2. **OpenAI API**: Get from [OpenAI Platform](https://platform.openai.com/)
+2. **Gemini API**: Get from [Google AI Studio](https://aistudio.google.com/)
+
+### Gemini Model Configuration
+The system uses Google's latest **Gemini 2.5 Flash Image** model for all image and video generation:
+
+- **GEMINI_IMAGE_MODEL**: Set to `gemini-2.5-flash-image` (default)
+- **Fallback**: Can be changed to `gemini-pro` if needed
+- **Requirements**: Requires Google Gemini API access
+
+This ensures optimal performance and quality for visual content generation.
 
 ### Validate Configuration
 ```bash

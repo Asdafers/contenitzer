@@ -34,6 +34,10 @@ class EnvTemplateGenerator:
             "YOUTUBE_API_KEY": "your_youtube_api_key_here",
             "GEMINI_API_KEY": "your_gemini_api_key_here",
             "": "",
+            "# Gemini Model Configuration": "",
+            "GEMINI_IMAGE_MODEL": "gemini-2.5-flash-image",
+            "# Primary model for image and video generation, can be changed to 'gemini-pro' for fallback": "",
+            "": "",
             "# Service URLs": "",
             "BACKEND_URL": "http://localhost:8000",
             "FRONTEND_URL": "http://localhost:3000",
@@ -62,6 +66,10 @@ class EnvTemplateGenerator:
             "YOUTUBE_API_KEY": "your_youtube_api_key_here",
             "GEMINI_API_KEY": "your_gemini_api_key_here",
             "": "",
+            "# Gemini Model Configuration": "",
+            "GEMINI_IMAGE_MODEL": "gemini-2.5-flash-image",
+            "# Primary model for image and video generation, can be changed to 'gemini-pro' for fallback": "",
+            "": "",
             "# Service URLs (Docker internal)": "",
             "BACKEND_URL": "http://backend:8000",
             "FRONTEND_URL": "http://frontend:3000",
@@ -87,6 +95,10 @@ class EnvTemplateGenerator:
             "# API Keys (REQUIRED)": "",
             "YOUTUBE_API_KEY": "REPLACE_WITH_ACTUAL_KEY",
             "GEMINI_API_KEY": "REPLACE_WITH_ACTUAL_KEY",
+            "": "",
+            "# Gemini Model Configuration": "",
+            "GEMINI_IMAGE_MODEL": "gemini-2.5-flash-image",
+            "# Can be changed to 'gemini-pro' for fallback, requires Google Gemini API access": "",
             "": "",
             "# Service URLs": "",
             "BACKEND_URL": "https://your-backend-domain.com",
@@ -137,7 +149,7 @@ class EnvTemplateGenerator:
                         env_vars[key.strip()] = value.strip()
 
             # Check for required variables
-            required = ["REDIS_URL", "YOUTUBE_API_KEY", "OPENAI_API_KEY"]
+            required = ["REDIS_URL", "YOUTUBE_API_KEY", "GEMINI_API_KEY"]
             missing = [var for var in required if var not in env_vars]
 
             # Check for placeholder values

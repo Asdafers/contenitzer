@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
 
-from src.api import trending, scripts, media, videos, sessions, tasks, websocket, setup, script_upload, workflow
+from src.api import trending, scripts, media, videos, sessions, tasks, websocket, setup, script_upload, workflow, health
 from src.api import video_generation, video_serving, job_management, media_assets
 from src.lib.middleware import setup_middleware
 from src.lib.database import DatabaseManager
@@ -53,6 +53,7 @@ app.include_router(video_generation.router, tags=["video-generation"])
 app.include_router(video_serving.router, tags=["video-serving"])
 app.include_router(job_management.router, tags=["job-management"])
 app.include_router(media_assets.router, tags=["media-assets"])
+app.include_router(health.router, tags=["health"])
 
 @app.on_event("startup")
 async def startup_event():

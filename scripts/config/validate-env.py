@@ -97,6 +97,29 @@ class EnvironmentValidator:
             elif value in ['your_key_here', 'YOUR_API_KEY', 'placeholder']:
                 self.errors.append(f"{key} contains placeholder value: {value}")
 
+    def validate_gemini_model_config(self) -> None:
+        """Validate Gemini model configuration"""
+        model = self.config.get('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image')
+
+        # List of valid Gemini models for image generation
+        valid_models = [
+            'gemini-2.5-flash-image',
+            'gemini-pro',
+            'gemini-pro-vision'
+        ]
+
+        if model not in valid_models:
+            self.warnings.append(f"GEMINI_IMAGE_MODEL '{model}' may not be supported. Valid options: {', '.join(valid_models)}")
+
+        # Recommend using the latest model
+        if model != 'gemini-2.5-flash-image':
+            self.warnings.append(f"Consider using 'gemini-2.5-flash-image' for best image generation performance")
+
+        # Check for placeholder values
+        placeholder_values = ['your_model_here', 'REPLACE_WITH_MODEL']
+        if model in placeholder_values:
+            self.errors.append(f"GEMINI_IMAGE_MODEL contains placeholder value: {model}")
+
     def validate_service_urls(self) -> None:
         """Validate service URLs"""
         url_fields = {
@@ -151,7 +174,8 @@ class EnvironmentValidator:
         recommended = {
             'DEBUG': 'true',
             'LOG_LEVEL': 'INFO',
-            'ENVIRONMENT': 'local'
+            'ENVIRONMENT': 'local',
+            'GEMINI_IMAGE_MODEL': 'gemini-2.5-flash-image'
         }
 
         for key, default in recommended.items():
@@ -168,6 +192,7 @@ class EnvironmentValidator:
         # Run all validation checks
         self.validate_redis_config()
         self.validate_api_keys()
+        self.validate_gemini_model_config()
         self.validate_service_urls()
         self.validate_environment_type()
         self.validate_optional_settings()
@@ -207,6 +232,9 @@ REDIS_TASK_DB=2
 # API Keys (replace with your actual keys)
 YOUTUBE_API_KEY=your_youtube_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# Gemini Model Configuration
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
 
 # Service URLs (defaults for local development)
 BACKEND_URL=http://localhost:8000
