@@ -199,61 +199,73 @@ class GeminiImageService:
             )
 
         try:
-            # Use Google GenAI SDK for Imagen
+            # Use Gemini 2.0 Flash native image generation (free tier available)
             from google import genai
-            from google.genai.types import GenerateImagesConfig
+            from io import BytesIO
+            from PIL import Image
 
             client = genai.Client(api_key=api_key)
 
             prompt = generation_request.get("prompt", "")
 
-            # Configure image generation
-            config = GenerateImagesConfig(
-                image_size="2K" if generation_request.get("quality") == "high" else "1K",
-                safety_filter_level="block_low_and_above",
-                person_generation="allow_adult"
+            # Configure for image generation with Gemini 2.0 Flash
+            config = genai.types.GenerateContentConfig(
+                response_modalities=['Text', 'Image']
             )
 
-            # Generate image with Imagen
-            logger.info(f"🎨 Generating real image with Imagen model: {prompt[:100]}")
+            # Generate image with Gemini 2.0 Flash (not Imagen - avoids billing requirement)
+            logger.info(f"🎨 Generating real image with Gemini 2.0 Flash: {prompt[:100]}")
 
-            response = client.models.generate_images(
-                model="imagen-3.0-generate-002",  # Use latest Imagen 3.0
-                prompt=prompt,
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",  # Use Gemini 2.0 Flash instead of Imagen
+                contents=prompt,
                 config=config
             )
 
-            if response.generated_images:
-                # Save the generated image
-                image_data = response.generated_images[0]
-                image_filename = f"imagen_{uuid.uuid4().hex[:8]}.png"
+            # Parse Gemini 2.0 Flash response (different format than Imagen)
+            image_found = False
+            image_caption = ""
 
-                # Use storage manager to save image
-                from ..services.storage_manager import StorageManager
-                storage = StorageManager()
-                image_path = storage.save_generated_image(image_data.image, image_filename)
+            for part in response.candidates[0].content.parts:
+                if part.text:
+                    image_caption = part.text.strip()
+                    logger.info(f"Generated image caption: {image_caption}")
+                elif part.inline_data:
+                    # Found image data in response
+                    image_found = True
+                    image_filename = f"gemini_{uuid.uuid4().hex[:8]}.png"
 
-                logger.info(f"✅ Successfully generated and saved image: {image_path}")
+                    # Convert inline data to PIL Image and save
+                    image = Image.open(BytesIO(part.inline_data.data))
 
-                return {
-                    "image_url": f"/api/media/assets/images/{image_filename}",
-                    "image_path": str(image_path),
-                    "description": f"Generated image: {prompt}",
-                    "model_used": "imagen-3.0-generate-002",
-                    "status": "completed",
-                    "generation_metadata": {
-                        "provider": "google_imagen",
-                        "model": "imagen-3.0-generate-002",
-                        "image_size": config.image_size,
-                        "original_prompt": prompt,
-                        "estimated_cost": 0.040  # Imagen pricing per image
+                    # Save image directly to assets directory
+                    from ..services.storage_manager import StorageManager
+                    storage = StorageManager()
+                    image_path = storage.get_asset_path("images") / image_filename
+                    image.save(str(image_path))
+
+                    logger.info(f"✅ Successfully generated and saved image: {image_path}")
+
+                    return {
+                        "image_url": f"/api/media/assets/images/{image_filename}",
+                        "image_path": str(image_path),
+                        "description": image_caption or f"Generated image: {prompt}",
+                        "model_used": "gemini-2.0-flash-exp",
+                        "status": "completed",
+                        "generation_metadata": {
+                            "provider": "google_gemini",
+                            "model": "gemini-2.0-flash-exp",
+                            "response_modalities": ["Text", "Image"],
+                            "original_prompt": prompt,
+                            "estimated_cost": 0.00  # Gemini 2.0 Flash may be free tier
+                        }
                     }
-                }
-            else:
+
+            if not image_found:
                 raise ImageGenerationError(
-                    "No images generated by Imagen API",
+                    "No images generated by Gemini 2.0 Flash",
                     generation_prompt=prompt,
-                    model_response="Empty image generation response"
+                    model_response="No image data in response"
                 )
 
         except ImportError as e:
@@ -276,6 +288,13 @@ class GeminiImageService:
             elif "unauthorized" in str(e).lower() or "invalid" in str(e).lower() and "key" in str(e).lower():
                 raise ImageGenerationError(
                     f"Invalid Google AI API key. Please check your GEMINI_API_KEY: {e}",
+                    generation_prompt=generation_request.get("prompt", ""),
+                    model_response=str(e)
+                )
+            elif "not available in your country" in str(e).lower() or "FAILED_PRECONDITION" in str(e):
+                # Geographic restriction - let it fail cleanly
+                raise ImageGenerationError(
+                    f"Google AI image generation not available in current region: {e}",
                     generation_prompt=generation_request.get("prompt", ""),
                     model_response=str(e)
                 )

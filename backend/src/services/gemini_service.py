@@ -33,10 +33,15 @@ class GeminiService:
         self.text_model = genai.GenerativeModel(self.text_model_name)
         self.image_model = genai.GenerativeModel(self.image_model_name)
 
-        # Availability checking cache
-        self._availability_cache = {}
-        self._cache_ttl_seconds = 60  # Cache for 60 seconds
-        self._last_availability_log = {}  # Track status changes for logging
+        # Availability checking cache (shared across instances to avoid quota exhaustion)
+        if not hasattr(GeminiService, '_shared_availability_cache'):
+            GeminiService._shared_availability_cache = {}
+        if not hasattr(GeminiService, '_shared_last_availability_log'):
+            GeminiService._shared_last_availability_log = {}
+
+        self._availability_cache = GeminiService._shared_availability_cache
+        self._cache_ttl_seconds = 1800  # Cache for 30 minutes to avoid quota exhaustion
+        self._last_availability_log = GeminiService._shared_last_availability_log
 
         # Store API key for availability checks
         self._api_key = api_key
@@ -132,11 +137,14 @@ class GeminiService:
                 'cached': bool
             }
         """
-        # Check cache first
+        # Check cache first to avoid quota exhaustion
         cached_status = self._get_cached_availability(model_name)
         if cached_status is not None:
             cached_status['cached'] = True
+            logger.debug(f"Using cached availability status for {model_name} (avoiding API call)")
             return cached_status
+
+        logger.info(f"Cache miss for {model_name} - performing API availability check")
 
         # Perform actual availability check
         start_time = time.time()
