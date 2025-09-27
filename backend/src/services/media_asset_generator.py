@@ -32,6 +32,70 @@ class MediaAssetGenerator:
     def __init__(self):
         self.storage_manager = StorageManager()
 
+    def incorporate_custom_media(
+        self,
+        asset_requirements: Dict[str, Any],
+        custom_media_assets: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Incorporate custom media assets into the generation plan.
+
+        Args:
+            asset_requirements: Original asset requirements from script analysis
+            custom_media_assets: List of selected custom media assets
+
+        Returns:
+            Updated asset requirements with custom media integrated
+        """
+        try:
+            if not custom_media_assets:
+                return asset_requirements
+
+            logger.info(f"Incorporating {len(custom_media_assets)} custom media assets")
+
+            updated_requirements = asset_requirements.copy()
+            custom_assets = []
+
+            for custom_asset in custom_media_assets:
+                file_info = custom_asset.get('file_info', {})
+
+                # Create asset requirement from custom media
+                custom_requirement = {
+                    'id': custom_asset['id'],
+                    'type': 'custom_media',
+                    'source_type': 'user_provided',
+                    'file_path': custom_asset['file_path'],
+                    'file_type': file_info.get('type', 'unknown'),
+                    'description': custom_asset['description'],
+                    'usage_intent': custom_asset['usage_intent'],
+                    'scene_association': custom_asset.get('scene_association'),
+                    'duration': file_info.get('duration', 3.0),  # Default 3 seconds for images
+                    'dimensions': file_info.get('dimensions'),
+                    'file_size': file_info.get('size', 0),
+                    'selected_at': custom_asset['selected_at']
+                }
+
+                custom_assets.append(custom_requirement)
+
+            # Add custom assets to requirements
+            if 'custom_media' not in updated_requirements:
+                updated_requirements['custom_media'] = []
+            updated_requirements['custom_media'].extend(custom_assets)
+
+            # Update summary counts
+            if 'summary' in updated_requirements:
+                updated_requirements['summary']['custom_media'] = len(custom_assets)
+                updated_requirements['summary']['total_assets'] = (
+                    updated_requirements['summary'].get('total_assets', 0) + len(custom_assets)
+                )
+
+            logger.info(f"Successfully incorporated {len(custom_assets)} custom media assets")
+            return updated_requirements
+
+        except Exception as e:
+            logger.error(f"Error incorporating custom media: {e}")
+            raise MediaAssetGeneratorError(f"Failed to incorporate custom media: {e}")
+
     def analyze_script_requirements(self, script_content: str, duration: int) -> Dict[str, Any]:
         """
         Analyze script content to determine media asset requirements.

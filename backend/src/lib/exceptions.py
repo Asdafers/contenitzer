@@ -110,3 +110,11 @@ class ContentPlanningError(AIProcessingError):
         super().__init__(message)
         self.script_content = script_content
         self.planning_stage = planning_stage
+
+
+class MediaBrowsingError(Exception):
+    """Exception for media browsing and file system operations."""
+    def __init__(self, message: str, file_path: str = None, error_context: dict = None):
+        super().__init__(message)
+        self.file_path = file_path
+        self.error_context = error_context or {}

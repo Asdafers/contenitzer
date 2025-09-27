@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { CheckIcon, XMarkIcon, EyeIcon, CurrencyDollarIcon, ClockIcon, PencilIcon, TrashIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, XMarkIcon, EyeIcon, CurrencyDollarIcon, ClockIcon, PencilIcon, TrashIcon, ArrowsRightLeftIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useApi } from '../../services/api';
+import { MediaSelectionModal } from '../MediaSelection/MediaSelectionModal';
+import { SelectedMediaList } from '../MediaSelection/SelectedMediaList';
+import { CustomMediaResponse, customMediaApi } from '../../services/customMediaApi';
 
 interface Asset {
   id: string;
@@ -59,6 +62,8 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
   const [showRejectionForm, setShowRejectionForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<string | null>(null);
   const [localPlan, setLocalPlan] = useState(plan);
+  const [showMediaSelection, setShowMediaSelection] = useState(false);
+  const [selectedCustomMedia, setSelectedCustomMedia] = useState<CustomMediaResponse[]>([]);
   const { editPlanAsset, deletePlanAsset, changeAssetType } = useApi();
 
   const formatCost = (cost: number) => `$${cost.toFixed(2)}`;
@@ -324,6 +329,49 @@ export const ContentPlanningPreview: React.FC<ContentPlanningPreviewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Use Existing Media Section */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-md font-medium text-gray-900">Use Existing Media</h4>
+          <button
+            onClick={() => setShowMediaSelection(true)}
+            className="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 flex items-center"
+          >
+            <PlusIcon className="h-4 w-4 mr-1" />
+            Add Media Files
+          </button>
+        </div>
+
+        <SelectedMediaList
+          planId={plan.plan_id}
+          selectedMedia={selectedCustomMedia}
+          onEdit={(updatedAsset) => {
+            const updatedMedia = selectedCustomMedia.map(asset =>
+              asset.id === updatedAsset.id ? updatedAsset : asset
+            );
+            setSelectedCustomMedia(updatedMedia);
+          }}
+          onRemove={async (assetId) => {
+            try {
+              await customMediaApi.removeCustomMedia(plan.plan_id, assetId);
+              setSelectedCustomMedia(prev => prev.filter(asset => asset.id !== assetId));
+            } catch (error) {
+              console.error('Error removing custom media:', error);
+            }
+          }}
+        />
+      </div>
+
+      {/* Media Selection Modal */}
+      <MediaSelectionModal
+        isOpen={showMediaSelection}
+        onClose={() => setShowMediaSelection(false)}
+        planId={plan.plan_id}
+        selectedMedia={selectedCustomMedia}
+        onMediaAdded={(assets) => setSelectedCustomMedia(assets)}
+        title="Select Media Files for Content Plan"
+      />
 
       {/* Rejection Form */}
       {showRejectionForm && (

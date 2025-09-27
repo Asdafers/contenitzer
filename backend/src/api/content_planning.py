@@ -499,3 +499,182 @@ async def change_asset_type(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error changing asset type"
         )
+
+
+# Custom Media Models
+class CustomMediaRequest(BaseModel):
+    file_path: str
+    description: str
+    usage_intent: str
+    scene_association: Optional[str] = None
+
+
+class CustomMediaResponse(BaseModel):
+    id: str
+    plan_id: str
+    file_path: str
+    description: str
+    usage_intent: str
+    scene_association: Optional[str] = None
+    file_info: Dict[str, Any]
+    selected_at: str
+    updated_at: Optional[str] = None
+
+
+class CustomMediaUpdateRequest(BaseModel):
+    file_path: Optional[str] = None
+    description: Optional[str] = None
+    usage_intent: Optional[str] = None
+    scene_association: Optional[str] = None
+
+
+# Custom Media Endpoints
+@router.post("/{plan_id}/custom-media", response_model=CustomMediaResponse, status_code=201)
+async def add_custom_media(
+    plan_id: str,
+    request: CustomMediaRequest,
+    db: Session = Depends(get_db)
+) -> CustomMediaResponse:
+    """
+    Add custom media file to content plan.
+    Allows users to select existing media files to include in their video generation.
+    """
+    try:
+        from ..services.custom_media_service import CustomMediaService
+
+        service = CustomMediaService(db)
+
+        # Add custom media to the plan
+        custom_asset = await service.add_custom_media(
+            plan_id=plan_id,
+            file_path=request.file_path,
+            description=request.description,
+            usage_intent=request.usage_intent,
+            scene_association=request.scene_association
+        )
+
+        logger.info(f"Added custom media to plan {plan_id}: {request.file_path}")
+
+        return CustomMediaResponse(**custom_asset)
+
+    except ContentPlanningError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
+        elif "already selected" in str(e).lower():
+            raise HTTPException(status_code=409, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error adding custom media to plan {plan_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )
+
+
+@router.put("/{plan_id}/custom-media/{asset_id}", response_model=CustomMediaResponse)
+async def update_custom_media(
+    plan_id: str,
+    asset_id: str,
+    request: CustomMediaUpdateRequest,
+    db: Session = Depends(get_db)
+) -> CustomMediaResponse:
+    """
+    Update custom media asset in content plan.
+    Allows users to modify description, usage intent, or replace the file.
+    """
+    try:
+        from ..services.custom_media_service import CustomMediaService
+
+        service = CustomMediaService(db)
+
+        # Update custom media asset
+        updated_asset = await service.update_custom_media(
+            plan_id=plan_id,
+            asset_id=asset_id,
+            updates=request.model_dump(exclude_none=True)
+        )
+
+        logger.info(f"Updated custom media {asset_id} in plan {plan_id}")
+
+        return CustomMediaResponse(**updated_asset)
+
+    except ContentPlanningError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating custom media {asset_id} in plan {plan_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )
+
+
+@router.delete("/{plan_id}/custom-media/{asset_id}", status_code=204)
+async def delete_custom_media(
+    plan_id: str,
+    asset_id: str,
+    db: Session = Depends(get_db)
+) -> None:
+    """
+    Remove custom media asset from content plan.
+    """
+    try:
+        from ..services.custom_media_service import CustomMediaService
+
+        service = CustomMediaService(db)
+
+        # Remove custom media from plan
+        success = await service.remove_custom_media(plan_id, asset_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Asset {asset_id} not found in plan {plan_id}")
+
+        logger.info(f"Removed custom media {asset_id} from plan {plan_id}")
+
+    except ContentPlanningError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error removing custom media {asset_id} from plan {plan_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )
+
+
+@router.get("/{plan_id}/custom-media", response_model=List[CustomMediaResponse])
+async def list_custom_media(
+    plan_id: str,
+    db: Session = Depends(get_db)
+) -> List[CustomMediaResponse]:
+    """
+    List all custom media assets for a content plan.
+    """
+    try:
+        from ..services.custom_media_service import CustomMediaService
+
+        service = CustomMediaService(db)
+
+        # Get all custom media assets for the plan
+        assets = await service.get_custom_media_assets(plan_id)
+
+        logger.info(f"Retrieved {len(assets)} custom media assets for plan {plan_id}")
+
+        return [CustomMediaResponse(**asset) for asset in assets]
+
+    except ContentPlanningError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error listing custom media for plan {plan_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )

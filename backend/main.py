@@ -9,7 +9,7 @@ load_dotenv()
 
 from src.api import trending, scripts, media, videos, sessions, tasks, websocket, setup, script_upload, workflow, health
 from src.api import video_generation, video_serving, job_management, media_assets
-from src.api import content_planning
+from src.api import content_planning, media_browsing
 from src.lib.middleware import setup_middleware
 from src.lib.database import DatabaseManager
 from src.lib.tasks import task_manager
@@ -59,6 +59,7 @@ app.include_router(video_serving.router, tags=["video-serving"])
 app.include_router(job_management.router, tags=["job-management"])
 app.include_router(media_assets.router, tags=["media-assets"])
 app.include_router(content_planning.router, tags=["content-planning"])
+app.include_router(media_browsing.router, tags=["media-browsing"])
 app.include_router(health.router, tags=["health"])
 
 @app.on_event("startup")
